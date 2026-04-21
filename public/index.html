@@ -266,7 +266,6 @@
     <h1>🚗 Bazos Auto Skener</h1>
     <p>auto.bazos.sk · 23 000 – 35 000 € · Dnešné inzeráty</p>
   </div>
-  <div class="date-badge">Dnes: <span id="today-label">—</span></div>
 </div>
 
 <div class="main">
@@ -278,7 +277,6 @@
       <div class="chip">⚡ Výkon: <strong>≥ 110 kW</strong></div>
       <div class="chip">📍 Nájazd: <strong>≤ 100 000 km</strong></div>
       <div class="chip">📅 Rok výroby: <strong>≥ 2021</strong></div>
-      <div class="chip">🗓️ Dátum: <strong>len dnešné</strong></div>
     </div>
   </div>
 
@@ -318,7 +316,7 @@
     <div class="summary-banner">
       <div class="summary-stat">
         <div class="val" id="stat-total">0</div>
-        <div class="lbl" id="stat-total-lbl">Inzerátov</div>
+        <div class="lbl">Inzerátov</div>
       </div>
       <div class="summary-divider"></div>
       <div class="summary-stat">
@@ -341,12 +339,6 @@
 
 <script>
 let currentSSE = null;
-
-function setToday() {
-  const d = new Date();
-  document.getElementById('today-label').textContent =
-    d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
-}
 
 function setProgress(pct, label) {
   document.getElementById('progress-bar').style.width = pct + '%';
@@ -522,19 +514,16 @@ function startScraping() {
     document.getElementById('stat-total').textContent = d.total;
     document.getElementById('stat-pass').textContent  = d.pass;
     document.getElementById('stat-pages').textContent = d.pages;
-    document.getElementById('stat-total-lbl').textContent = d.autoMode ? 'Dnešných inzerátov' : 'Inzerátov spolu';
     document.getElementById('results-section').style.display = 'block';
   });
 
   sse.addEventListener('summary', e => {
     const d = JSON.parse(e.data);
-    const prefix = d.autoMode ? 'Dnešný prehľad' : `Prehľad (${d.pages} stránok)`;
     document.getElementById('results-title').textContent =
-      `${prefix}: celkom ${d.total} inzerátov, z toho ${d.pass} prešlo filtrom.`;
+      `Celkom ${d.total} inzerátov, ${d.pass} prešlo filtrom.`;
     document.getElementById('stat-total').textContent = d.total;
     document.getElementById('stat-pass').textContent  = d.pass;
     document.getElementById('stat-pages').textContent = d.pages;
-    document.getElementById('stat-total-lbl').textContent = d.autoMode ? 'Dnešných inzerátov' : 'Inzerátov spolu';
   });
 
   sse.addEventListener('result', e => {
@@ -579,7 +568,6 @@ function startScraping() {
   };
 }
 
-setToday();
 loadPrevScans();
 </script>
 </body>

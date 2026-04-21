@@ -1,6 +1,5 @@
 import { parse } from 'node-html-parser';
 
-// kitx=ano → show only today's new listings (used in auto mode)
 const BASE_PARAMS = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=';
 const BASE_URL    = 'https://auto.bazos.sk/';
 
@@ -11,39 +10,9 @@ const HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br',
 };
 
-const SK_MONTHS = {
-  januára:0, februára:1, marca:2, apríla:3, mája:4, júna:5,
-  júla:6, augusta:7, septembra:8, októbra:9, novembra:10, decembra:11,
-  // Czech fallbacks
-  ledna:0, února:1, března:2, dubna:3, května:4, června:5,
-  července:6, srpna:7, září:8, října:9, listopadu:10, prosince:11,
-};
-
-// ─────────────────────────────────────────────
-//  UTILS
-// ─────────────────────────────────────────────
-function parseSkDate(text) {
-  if (!text) return null;
-  text = text.trim();
-  if (/dnes/i.test(text)) return new Date();
-
-  const m1 = text.match(/(\d+)\.\s+([a-záéíóúýčšžťňľŕôäůě]+)\s+(\d{4})/i);
-  if (m1) {
-    const mon = SK_MONTHS[m1[2].toLowerCase()];
-    if (mon !== undefined) return new Date(+m1[3], mon, +m1[1]);
-  }
-  const m2 = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-  if (m2) return new Date(+m2[3], +m2[2] - 1, +m2[1]);
-
-  return null;
-}
-
-function pageUrl(offset, autoMode) {
-  // auto mode: kitx=ano = only today's new listings (server-side date filter)
-  // manual mode: no kitx filter so older listings are returned too
-  const kitx = autoMode ? '&kitx=ano' : '';
-  const crp  = offset > 0 ? `&crp=${offset}` : '&crp=';
-  const query = `?${BASE_PARAMS}${crp}${kitx}`;
+function pageUrl(offset) {
+  const crp   = offset > 0 ? `&crp=${offset}` : '&crp=';
+  const query = `?${BASE_PARAMS}${crp}`;
   if (offset === 0) return `${BASE_URL}${query}`;
   return `${BASE_URL}${offset}/${query}`;
 }
@@ -115,28 +84,12 @@ function parseOverviewPage(html) {
       }
     }
 
-    // Date
-    let date = null;
-    const dateEl = item.querySelector('.velikost10') ||
-                   item.querySelector('.datum') ||
-                   item.querySelector('[class*="datum"]');
-    if (dateEl) date = parseSkDate(dateEl.text);
-    if (!date) {
-      for (const el of item.querySelectorAll('span, small, div')) {
-        const t = el.text;
-        if (/\d{1,2}\.\s*[a-záéíóú]+\s+\d{4}|\d{1,2}\.\d{1,2}\.\d{4}|dnes/i.test(t)) {
-          date = parseSkDate(t);
-          if (date) break;
-        }
-      }
-    }
-
     const descEl = item.querySelector('.popis') ||
                    item.querySelector('.opis') ||
                    item.querySelector('[class*="popis"]');
     const description = descEl ? descEl.text.trim().substring(0, 200) : '';
 
-    listings.push({ title, url, price, date, description });
+    listings.push({ title, url, price, description });
   });
 
   return listings;
@@ -166,19 +119,23 @@ function parseYear(text) {
   return null;
 }
 
-// Detect fuel from engine code abbreviations in the title (most reliable signal)
+// Detect fuel from engine code abbreviations.
+// Uses (?<![a-z]) / (?![a-z]) instead of \b because engine codes like "2.0TSi"
+// have a digit before the code — \b doesn't fire between \w chars (0 and T both \w).
 function fuelFromAbbr(text) {
   const t = text.toLowerCase();
   // Plug-in hybrid codes
-  if (/\bphev\b|\bgte\b|\bp-hev\b/.test(t))                              return 'Plug-in hybrid';
+  if (/phev|p-hev|(?<![a-z])gte(?![a-z])/.test(t))                                        return 'Plug-in hybrid';
   // Mild hybrid codes
-  if (/\bmhev\b|\bshev\b/.test(t))                                        return 'Mild hybrid';
-  // Diesel codes
-  if (/\btdi\b|\bcdi\b|\bdci\b|\bhdi\b|\bcrdi\b|\bsdv\b|\btid\b|\bd4d\b|\bd5\b|\bjtd\b|\bcdti\b|\bddis\b/.test(t)) return 'Diesel';
-  // Petrol codes
-  if (/\btsi\b|\btfsi\b|\bfsi\b|\bmpi\b|\bgti\b|\bgdi\b|\bt-gdi\b|\beci\b|\becotec\b|\btgdi\b|\bvtec\b/.test(t))   return 'Benzín';
+  if (/(?<![a-z])mhev(?![a-z])|(?<![a-z])shev(?![a-z])/.test(t))                          return 'Mild hybrid';
+  // Diesel engine codes
+  if (/(?<![a-z])(?:tdi|cdi|dci|hdi|crdi|sdv|d4d|jtd|cdti|ddis)(?![a-z])/.test(t))       return 'Diesel';
+  // Diesel numeric suffix: "520d", "330d", "220d" (digits immediately before "d", not followed by a letter)
+  if (/\d+d(?![a-z])/.test(t))                                                              return 'Diesel';
+  // Petrol engine codes
+  if (/(?<![a-z])(?:tsi|tfsi|fsi|mpi|gti|gdi|t-gdi|vtec|ecotec|ecoboost|tgdi)(?![a-z])/.test(t)) return 'Benzín';
   // Electric codes
-  if (/\be-tron\b|\bid\.\d|\bioniq\b|\bezev\b/.test(t))                   return 'Elektro';
+  if (/e-tron|(?<![a-z])id\.\d|ioniq/.test(t))                                             return 'Elektro';
   return null;
 }
 
@@ -246,7 +203,7 @@ function parseDetailPage(html, listingTitle = '') {
     if (!res.power   && /v[ýy]kon/.test(label)) {
       const m = value.match(/(\d+)/); if (m) res.power = +m[0];
     }
-    if (!res.fuel    && /palivo|druh\s*paliva|pohon/.test(label)) {
+    if (!res.fuel    && /palivo|druh\s*paliva/.test(label)) {
       // Normalize the raw table value through fuel detection (catches "Benzín", "Nafta", abbreviations)
       res.fuel = parseFuel(value, listingTitle) || value.trim();
     }
@@ -320,24 +277,8 @@ function scorePriceKw(pricePerKw, minPricePerKw) {
 //  MAIN SCRAPER
 // ─────────────────────────────────────────────
 export async function runScraper(emit, isAborted, maxPages = 0) {
-  const todayDate = new Date();
-  todayDate.setHours(0, 0, 0, 0);
-
-  const isSameDay = d => {
-    if (!d) return false;
-    const x = new Date(d); x.setHours(0, 0, 0, 0);
-    return x.getTime() === todayDate.getTime();
-  };
-  const isOlderThanToday = d => {
-    if (!d) return false;
-    const x = new Date(d); x.setHours(0, 0, 0, 0);
-    return x.getTime() < todayDate.getTime();
-  };
-
-  const autoMode = maxPages === 0; // auto = only today's listings; manual = all listings from N pages
-
   emit('progress', { pct: 5, label: 'Načítavam prehľadové stránky...' });
-  emit('log', { msg: (autoMode ? 'Mód: automatický (len dnešné). ' : `Mód: manuálny (${maxPages} stránok). `) + todayDate.toLocaleDateString('sk-SK') });
+  emit('log', { msg: maxPages > 0 ? `Skenujeme ${maxPages} stránok.` : 'Skenujeme všetky stránky.' });
 
   // ── Phase 1: Collect listings ──
   const collectedListings = [];
@@ -346,7 +287,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
   let stop = false;
 
   while (!stop && !isAborted()) {
-    const url = pageUrl(pageOffset, autoMode);
+    const url = pageUrl(pageOffset);
     const pageNum = pageOffset === 0 ? 1 : pageOffset / 20 + 1;
     emit('log', { msg: `Stránka ${pageNum}: ${url}` });
     emit('progress', { pct: 5 + Math.min(pageCount * 5, 25), label: `Stránka ${pageNum}...` });
@@ -366,30 +307,11 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
       break;
     }
 
-    if (autoMode) {
-      // Auto mode: only collect today's listings, stop on older date
-      let foundOlder = false;
-      for (const l of listings) {
-        if (isSameDay(l.date)) {
-          collectedListings.push(l);
-        } else if (isOlderThanToday(l.date)) {
-          emit('log', { msg: `Narazil som na starší dátum – zastavujem.` });
-          foundOlder = true;
-          stop = true;
-          break;
-        }
-      }
-      if (!foundOlder && listings.length < 20) {
-        emit('log', { msg: 'Posledná stránka dosiahnutá.' });
-        stop = true;
-      }
-    } else {
-      // Manual mode: collect everything
-      collectedListings.push(...listings);
-      if (listings.length < 20) {
-        emit('log', { msg: 'Posledná stránka dosiahnutá.' });
-        stop = true;
-      }
+    collectedListings.push(...listings);
+
+    if (listings.length < 20) {
+      emit('log', { msg: 'Posledná stránka dosiahnutá.' });
+      stop = true;
     }
 
     pageCount++;
@@ -402,8 +324,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
     if (!stop) await sleep(400);
   }
 
-  const modeLabel = autoMode ? 'dnešných inzerátov' : 'inzerátov';
-  emit('log', { msg: `Celkom ${modeLabel}: ${collectedListings.length}` });
+  emit('log', { msg: `Celkom inzerátov: ${collectedListings.length}` });
 
   // Deduplicate across pages (TOP listings appear on multiple pages)
   const seenUrls = new Set();
@@ -422,7 +343,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
     return;
   }
 
-  emit('stats', { total: uniqueListings.length, pass: 0, pages: pageCount, autoMode });
+  emit('stats', { total: uniqueListings.length, pass: 0, pages: pageCount });
 
   // ── Phase 2: Fetch detail pages ──
   emit('progress', { pct: 30, label: 'Načítavam detaily inzerátov...' });
@@ -455,7 +376,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
   );
 
   emit('log', { msg: `Filter: ${filtered.length} z ${detailed.length} prešlo.` });
-  emit('stats', { total: collectedListings.length, pass: filtered.length, pages: pageCount, autoMode });
+  emit('stats', { total: uniqueListings.length, pass: filtered.length, pages: pageCount });
 
   if (filtered.length === 0) {
     emit('progress', { pct: 100, label: 'Hotovo' });
@@ -486,7 +407,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
 
   // ── Phase 5: Emit results ──
   emit('progress', { pct: 95, label: 'Vykresľujem výsledky...' });
-  emit('summary', { total: detailed.length, pass: filtered.length, pages: pageCount, autoMode });
+  emit('summary', { total: detailed.length, pass: filtered.length, pages: pageCount });
 
   scored.forEach((item, i) => {
     emit('result', { ...item, rank: i + 1 });
