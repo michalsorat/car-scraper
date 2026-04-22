@@ -1,49 +1,44 @@
-import Database from 'better-sqlite3';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const db = new Database(join(__dirname, 'listings.db'));
+const DB_PATH = join(__dirname, 'listings.json');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS listings (
-    bazos_id    TEXT PRIMARY KEY,
-    url         TEXT NOT NULL,
-    title       TEXT,
-    price       INTEGER,
-    description TEXT,
-    year        INTEGER,
-    mileage     INTEGER,
-    power       INTEGER,
-    fuel        TEXT,
-    first_seen  TEXT,
-    last_seen   TEXT,
-    ai_parsed   INTEGER DEFAULT 0
-  )
-`);
+function load() {
+  if (!existsSync(DB_PATH)) return {};
+  try { return JSON.parse(readFileSync(DB_PATH, 'utf8')); } catch { return {}; }
+}
+
+function save(data) {
+  writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
 
 export function getListing(bazosId) {
-  return db.prepare('SELECT * FROM listings WHERE bazos_id = ?').get(bazosId);
+  return load()[bazosId] ?? null;
 }
 
 export function insertListing(listing) {
+  const data = load();
+  if (data[listing.bazos_id]) return;
   const now = new Date().toISOString().slice(0, 10);
-  db.prepare(`
-    INSERT OR IGNORE INTO listings
-    (bazos_id, url, title, price, description, year, mileage, power, fuel, first_seen, last_seen, ai_parsed)
-    VALUES (@bazos_id, @url, @title, @price, @description, @year, @mileage, @power, @fuel, @first_seen, @last_seen, @ai_parsed)
-  `).run({ ...listing, first_seen: now, last_seen: now });
+  data[listing.bazos_id] = { ...listing, first_seen: now, last_seen: now };
+  save(data);
 }
 
 export function updatePrice(bazosId, price) {
-  const now = new Date().toISOString().slice(0, 10);
-  db.prepare('UPDATE listings SET price = ?, last_seen = ? WHERE bazos_id = ?').run(price, now, bazosId);
+  const data = load();
+  if (!data[bazosId]) return;
+  data[bazosId].price = price;
+  data[bazosId].last_seen = new Date().toISOString().slice(0, 10);
+  save(data);
 }
 
 export function getAllListings() {
-  return db.prepare('SELECT * FROM listings ORDER BY last_seen DESC').all();
+  const data = load();
+  return Object.values(data).sort((a, b) => b.last_seen.localeCompare(a.last_seen));
 }
 
 export function getListingCount() {
-  return db.prepare('SELECT COUNT(*) as cnt FROM listings').get().cnt;
+  return Object.keys(load()).length;
 }

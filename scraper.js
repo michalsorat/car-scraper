@@ -230,25 +230,21 @@ function regexExtract(title, params, bodyText = '') {
 }
 
 // ─────────────────────────────────────────────
-//  OLLAMA  —  AI extrakcia (len pre chýbajúce polia)
+//  OLLAMA  —  AI extrakcia všetkých polí
 // ─────────────────────────────────────────────
-async function callOllama(title, params, bodyText, missing) {
-  const fields = [];
-  if (missing.power)   fields.push(`"power_kw": výkon v kW (ak PS/hp prepočítaj *0.7355) alebo null`);
-  if (missing.mileage) fields.push(`"mileage_km": celkový nájazd v km alebo null`);
-  if (missing.year)    fields.push(`"year": rok výroby (4-ciferné) alebo null`);
-  if (missing.fuel)    fields.push(`"fuel": "Benzín" alebo "Diesel" alebo "Hybrid" alebo "Plug-in hybrid" alebo "Elektro" alebo null`);
+async function extractCarData(title, params, bodyText, emitLog) {
+  const sections = [];
+  if (params) sections.push(`Parametre (tabuľka):\n${params}`);
+  if (bodyText) sections.push(`Text inzerátu:\n${bodyText}`);
 
-  const paramsSection = params
-    ? `Parametre (tabuľka):\n${params}`
-    : `Text inzerátu:\n${bodyText}`;
+  const prompt = `Extrahuj parametre auta. Vráť VÝLUČNE JSON objekt, žiadny iný text.
 
-  const prompt = `Extrahuj chýbajúce parametre auta. Vráť VÝLUČNE JSON objekt, žiadny iný text.
-
-{${fields.join(', ')}}
+{"power_kw": výkon v kW ako číslo (ak PS/hp prepočítaj *0.7355) alebo null, "mileage_km": celkový nájazd v km ako číslo alebo null, "year": rok výroby ako 4-ciferné číslo alebo null, "fuel": "Benzín" alebo "Diesel" alebo "Hybrid" alebo "Plug-in hybrid" alebo "Elektro" alebo null}
 
 Názov: ${title}
-${paramsSection}`;
+${sections.join('\n\n')}`;
+
+  emitLog(`   🤖 Ollama parsuje...`);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120000);
@@ -284,39 +280,6 @@ ${paramsSection}`;
     mileage: typeof parsed.mileage_km === 'number' ? Math.round(parsed.mileage_km) : null,
     year:    typeof parsed.year       === 'number' ? Math.round(parsed.year)        : null,
     fuel:    typeof parsed.fuel       === 'string' && parsed.fuel ? parsed.fuel     : null,
-  };
-}
-
-// ─────────────────────────────────────────────
-//  EXTRAKCIA  (regex → Ollama len pre chýbajúce)
-// ─────────────────────────────────────────────
-async function extractCarData(title, params, bodyText, emitLog) {
-  const rx = regexExtract(title, params, bodyText);
-
-  const missing = {
-    power:   rx.power   === null,
-    mileage: rx.mileage === null,
-    year:    rx.year    === null,
-    fuel:    rx.fuel    === null,
-  };
-  const missingCount = Object.values(missing).filter(Boolean).length;
-
-  if (missingCount === 0) {
-    emitLog(`   📐 Regex: výkon ${rx.power} kW | nájazd ${rx.mileage} km | rok ${rx.year} | palivo ${rx.fuel}`);
-    return rx;
-  }
-
-  const missingKeys = Object.entries(missing).filter(([, v]) => v).map(([k]) => k).join(', ');
-  emitLog(`   📐 Regex: výkon ${rx.power ?? '?'} kW | nájazd ${rx.mileage ?? '?'} km | rok ${rx.year ?? '?'} | palivo ${rx.fuel ?? '?'}`);
-  emitLog(`   🤖 Ollama dopĺňa: ${missingKeys}`);
-
-  const ai = await callOllama(title, params, bodyText, missing);
-
-  return {
-    power:   rx.power   ?? ai.power,
-    mileage: rx.mileage ?? ai.mileage,
-    year:    rx.year    ?? ai.year,
-    fuel:    rx.fuel    ?? ai.fuel,
   };
 }
 
@@ -507,7 +470,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
       try {
         const html                                    = await fetchHTML(listing.url);
         const { description, params, bodyText }     = extractCarParams(html);
-        return { listing, bazosId, description, params };
+        return { listing, bazosId, description, params, bodyText };
       } catch (e) {
         emit('log', { msg: `   ⚠️ Fetch chyba: ${listing.title.substring(0, 40)} — ${e.message}` });
         return null;
@@ -520,7 +483,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
 
     for (let i = 0; i < valid.length; i++) {
       if (isAborted()) break;
-      const { listing, bazosId, description, params } = valid[i];
+      const { listing, bazosId, description, params, bodyText } = valid[i];
       emit('progress', {
         pct: 55 + Math.round((i / valid.length) * 30),
         label: `AI ${i + 1}/${valid.length}: ${listing.title.substring(0, 40)}...`,
