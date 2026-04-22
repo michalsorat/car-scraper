@@ -44,15 +44,6 @@
       -webkit-text-fill-color: transparent;
     }
     .header-left p { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
-    .date-badge {
-      background: var(--card2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-    .date-badge span { color: var(--accent); font-weight: 600; }
     .main { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
     .filter-panel {
       background: var(--card);
@@ -78,6 +69,42 @@
       color: var(--text);
     }
     .chip strong { color: var(--accent); }
+
+    /* DB panel */
+    .db-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 24px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .db-panel-left { display: flex; align-items: center; gap: 12px; }
+    .db-panel-left h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    .db-badge {
+      background: var(--accent2);
+      color: #fff;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .btn-db {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--accent);
+      padding: 8px 18px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .btn-db:hover { border-color: var(--accent); }
+
     .start-wrap { text-align: center; margin: 32px 0; display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
     .pages-input-wrap { display: flex; align-items: center; gap: 8px; }
     .pages-input-wrap label { font-size: 0.85rem; color: var(--muted); }
@@ -103,6 +130,7 @@
     .btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
     .btn-start:active { transform: translateY(0); }
     .btn-start:disabled { opacity: 0.5; cursor: default; transform: none; }
+
     #progress-section { display: none; margin-bottom: 24px; }
     .progress-card {
       background: var(--card);
@@ -125,13 +153,13 @@
       border-top-color: var(--green);
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .progress-label { font-size: 0.9rem; color: var(--text); }
+    .progress-label { font-size: 0.9rem; color: var(--text); font-weight: 500; }
     .progress-bar-wrap {
       background: var(--card2);
       border-radius: 4px;
       height: 6px;
       overflow: hidden;
-      margin-bottom: 10px;
+      margin-bottom: 14px;
     }
     .progress-bar {
       height: 100%;
@@ -140,8 +168,44 @@
       width: 0%;
       transition: width 0.3s ease;
     }
-    .progress-log { font-size: 0.78rem; color: var(--muted); max-height: 80px; overflow-y: auto; }
+
+    /* Current item highlight */
+    .current-item {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent2);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      font-size: 0.82rem;
+      color: var(--text);
+      display: none;
+    }
+    .current-item .ci-label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .current-item .ci-title { font-weight: 500; }
+    .current-item .ci-step { color: var(--accent2); font-size: 0.78rem; margin-top: 3px; }
+
+    /* Log */
+    .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .log-header span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .btn-clear-log { background: none; border: none; color: var(--muted); font-size: 0.72rem; cursor: pointer; padding: 0; }
+    .btn-clear-log:hover { color: var(--text); }
+    .progress-log {
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-height: 220px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Menlo', monospace;
+      line-height: 1.6;
+    }
     .progress-log div { padding: 1px 0; }
+    .log-new    { color: var(--accent); }
+    .log-ai     { color: var(--accent2); }
+    .log-ok     { color: var(--green); }
+    .log-warn   { color: var(--yellow); }
+    .log-cache  { color: #64748b; }
+    .log-page   { color: var(--muted); }
+
     .summary-banner {
       background: var(--card2);
       border: 1px solid var(--border);
@@ -227,33 +291,6 @@
       font-size: 0.85rem;
       margin-bottom: 16px;
     }
-    .saved-box {
-      background: #22c55e15;
-      border: 1px solid #22c55e40;
-      border-radius: var(--radius);
-      padding: 14px 20px;
-      font-size: 0.85rem;
-      margin-bottom: 16px;
-      display: flex; align-items: center; gap: 10px;
-    }
-    .saved-box a { color: var(--green); font-weight: 600; text-decoration: none; }
-    .saved-box a:hover { text-decoration: underline; }
-    .prev-scans {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px 24px;
-      margin-bottom: 24px;
-    }
-    .prev-scans h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
-    .prev-scans ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
-    .prev-scans li a {
-      display: inline-block;
-      background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
-      padding: 6px 14px; font-size: 0.82rem; color: var(--accent); text-decoration: none;
-      transition: border-color 0.2s;
-    }
-    .prev-scans li a:hover { border-color: var(--accent); }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -280,10 +317,14 @@
     </div>
   </div>
 
-  <!-- PREVIOUS SCANS -->
-  <div class="prev-scans" id="prev-scans" style="display:none">
-    <h3>Predchádzajúce skenovania</h3>
-    <ul id="prev-scans-list"></ul>
+  <!-- DB PANEL -->
+  <div class="db-panel">
+    <div class="db-panel-left">
+      <h3>Databáza</h3>
+      <span class="db-badge" id="db-count">…</span>
+      <span style="font-size:0.8rem;color:var(--muted)">uložených inzerátov</span>
+    </div>
+    <button class="btn-db" onclick="loadFromDB()">📂 Zobraziť z databázy</button>
   </div>
 
   <div class="start-wrap">
@@ -297,20 +338,26 @@
   <div id="progress-section">
     <div class="progress-card">
       <div class="progress-top">
-        <div class="spinner"></div>
+        <div class="spinner" id="spinner"></div>
         <div class="progress-label" id="progress-label">Inicializujem...</div>
       </div>
       <div class="progress-bar-wrap">
         <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="current-item" id="current-item">
+        <div class="ci-label">Aktuálne spracovávam</div>
+        <div class="ci-title" id="ci-title"></div>
+        <div class="ci-step" id="ci-step"></div>
+      </div>
+      <div class="log-header">
+        <span>Log</span>
+        <button class="btn-clear-log" onclick="clearLog()">vymazať</button>
       </div>
       <div class="progress-log" id="progress-log"></div>
     </div>
   </div>
 
   <div class="error-box" id="error-box" style="display:none"></div>
-  <div class="saved-box" id="saved-box" style="display:none">
-    ✅ Výsledky uložené: <a id="saved-link" href="#" target="_blank">otvoriť</a>
-  </div>
 
   <div id="results-section">
     <div class="summary-banner">
@@ -345,12 +392,43 @@ function setProgress(pct, label) {
   document.getElementById('progress-label').textContent = label;
 }
 
+function setCurrentItem(title, step) {
+  const el = document.getElementById('current-item');
+  if (!title) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  document.getElementById('ci-title').textContent = title;
+  document.getElementById('ci-step').textContent = step || '';
+}
+
 function log(msg) {
   const el = document.getElementById('progress-log');
   const d = document.createElement('div');
-  d.textContent = '→ ' + msg;
+  // Farby podľa obsahu správy
+  if (msg.includes('🆕'))          d.className = 'log-new';
+  else if (msg.includes('🤖'))     d.className = 'log-ai';
+  else if (msg.includes('✅') || msg.includes('→ výkon')) d.className = 'log-ok';
+  else if (msg.includes('⚠️') || msg.includes('Chyba')) d.className = 'log-warn';
+  else if (msg.includes('Cache') || msg.includes('💰')) d.className = 'log-cache';
+  else if (msg.includes('Stránka')) d.className = 'log-page';
+  d.textContent = msg;
   el.appendChild(d);
   el.scrollTop = el.scrollHeight;
+
+  // Aktualizuj current-item panel
+  if (msg.includes('🆕')) {
+    const title = msg.replace('🆕 Nový: ', '').trim();
+    setCurrentItem(title, 'Načítavam detail stránky...');
+  } else if (msg.includes('🤖')) {
+    const ci = document.getElementById('ci-step');
+    if (ci) ci.textContent = '🤖 Claude AI parsuje údaje...';
+  } else if (msg.includes('→ výkon')) {
+    const ci = document.getElementById('ci-step');
+    if (ci) ci.textContent = '✅ ' + msg.trim();
+  }
+}
+
+function clearLog() {
+  document.getElementById('progress-log').innerHTML = '';
 }
 
 function showError(msg) {
@@ -404,13 +482,12 @@ function fuelEmoji(fuel) {
 }
 
 function esc(s) {
-  return String(s)
+  return String(s ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function renderCard(item) {
-  const priceKw = item.price && item.power ? (item.price / item.power).toFixed(1) : '—';
   const warnings = [];
   if (!item.power)   warnings.push('výkon sa nepodarilo zistiť');
   if (item.mileage === null || item.mileage === undefined) warnings.push('nájazd sa nepodarilo zistiť');
@@ -468,18 +545,36 @@ function renderCard(item) {
   return card;
 }
 
-async function loadPrevScans() {
-  const files = await fetch('/api/results').then(r => r.json()).catch(() => []);
-  const wrap = document.getElementById('prev-scans');
-  const list = document.getElementById('prev-scans-list');
-  if (files.length === 0) { wrap.style.display = 'none'; return; }
-  list.innerHTML = files.map(f => {
-    // filename: scan-2026-04-21T14-30.html → "21.4.2026 14:30"
-    const m = f.match(/scan-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
-    const label = m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : f;
-    return `<li><a href="/results/${encodeURIComponent(f)}" target="_blank">${label}</a></li>`;
-  }).join('');
-  wrap.style.display = 'block';
+async function loadFromDB() {
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('results-title').textContent = 'Načítavam z databázy...';
+  document.getElementById('car-list').innerHTML = '';
+
+  const data = await fetch('/api/listings').then(r => r.json()).catch(() => null);
+  if (!data) {
+    document.getElementById('results-title').textContent = 'Chyba pri načítaní databázy.';
+    return;
+  }
+
+  document.getElementById('stat-total').textContent  = data.total;
+  document.getElementById('stat-pass').textContent   = data.filtered;
+  document.getElementById('stat-pages').textContent  = '—';
+  document.getElementById('results-title').textContent =
+    `Databáza: ${data.total} inzerátov celkom, ${data.filtered} prešlo filtrom`;
+
+  if (data.results.length === 0) {
+    document.getElementById('car-list').innerHTML =
+      `<div class="no-results"><div class="emoji">🗄️</div><div>Databáza je prázdna alebo žiadny záznam nepresiel filtrom.</div></div>`;
+    return;
+  }
+  data.results.forEach(item => {
+    document.getElementById('car-list').appendChild(renderCard(item));
+  });
+}
+
+async function loadDBCount() {
+  const data = await fetch('/api/listings/count').then(r => r.json()).catch(() => ({ count: 0 }));
+  document.getElementById('db-count').textContent = data.count;
 }
 
 function startScraping() {
@@ -492,9 +587,10 @@ function startScraping() {
   document.getElementById('progress-section').style.display = 'block';
   document.getElementById('results-section').style.display = 'none';
   document.getElementById('error-box').style.display = 'none';
-  document.getElementById('saved-box').style.display = 'none';
   document.getElementById('progress-log').innerHTML = '';
   document.getElementById('car-list').innerHTML = '';
+  document.getElementById('spinner').classList.remove('done');
+  setCurrentItem(null);
 
   const url = maxPages > 0 ? `/api/scrape?maxPages=${maxPages}` : '/api/scrape';
   const sse = new EventSource(url);
@@ -544,20 +640,14 @@ function startScraping() {
     try { showError(JSON.parse(e.data).msg); } catch (_) {}
   });
 
-  sse.addEventListener('saved', e => {
-    const d = JSON.parse(e.data);
-    const link = document.getElementById('saved-link');
-    link.href = d.url;
-    document.getElementById('saved-box').style.display = 'flex';
-  });
-
   sse.addEventListener('done', () => {
     sse.close();
     currentSSE = null;
-    document.querySelector('.spinner').classList.add('done');
+    document.getElementById('spinner').classList.add('done');
     document.getElementById('startBtn').disabled = false;
     document.getElementById('startBtn').textContent = '🔄 Skenovať znova';
-    loadPrevScans();
+    setCurrentItem(null);
+    loadDBCount();
   });
 
   sse.onerror = () => {
@@ -565,10 +655,11 @@ function startScraping() {
     currentSSE = null;
     document.getElementById('startBtn').disabled = false;
     document.getElementById('startBtn').textContent = '🔄 Skenovať znova';
+    setCurrentItem(null);
   };
 }
 
-loadPrevScans();
+loadDBCount();
 </script>
 </body>
 </html>

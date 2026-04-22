@@ -39,3 +39,11 @@ export function updatePrice(bazosId, price) {
   const now = new Date().toISOString().slice(0, 10);
   db.prepare('UPDATE listings SET price = ?, last_seen = ? WHERE bazos_id = ?').run(price, now, bazosId);
 }
+
+export function getAllListings() {
+  return db.prepare('SELECT * FROM listings ORDER BY last_seen DESC').all();
+}
+
+export function getListingCount() {
+  return db.prepare('SELECT COUNT(*) as cnt FROM listings').get().cnt;
+}

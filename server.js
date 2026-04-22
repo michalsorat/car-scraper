@@ -1,26 +1,25 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { promises as fs } from 'fs';
-import { runScraper } from './scraper.js';
-import { generateResultsHTML } from './saveResults.js';
+import { runScraper, scoreListings } from './scraper.js';
+import { getAllListings, getListingCount } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const RESULTS_DIR = join(__dirname, 'results');
 const app = express();
 const PORT = 3000;
 
-// Ensure results directory exists
-await fs.mkdir(RESULTS_DIR, { recursive: true });
-
 app.use(express.static(join(__dirname, 'public')));
-app.use('/results', express.static(RESULTS_DIR));
 
-// List saved result files
-app.get('/api/results', async (req, res) => {
-  const files = await fs.readdir(RESULTS_DIR).catch(() => []);
-  const htmlFiles = files.filter(f => f.endsWith('.html')).sort().reverse();
-  res.json(htmlFiles);
+// DB listings endpoint – vracia všetky záznamy ohodnotené a zoradené
+app.get('/api/listings', (req, res) => {
+  const all    = getAllListings();
+  const scored = scoreListings(all);
+  res.json({ total: all.length, filtered: scored.length, results: scored });
+});
+
+// Počet záznamov v DB (pre badge v UI)
+app.get('/api/listings/count', (req, res) => {
+  res.json({ count: getListingCount() });
 });
 
 // Main scraping SSE endpoint
@@ -39,33 +38,10 @@ app.get('/api/scrape', async (req, res) => {
   let aborted = false;
   req.on('close', () => { aborted = true; });
 
-  const allResults = [];
-  let summaryMeta = { totalScanned: 0, totalPages: 0 };
-
-  const wrappedSend = (event, data) => {
-    send(event, data);
-    if (event === 'result') allResults.push(data);
-    if (event === 'summary') summaryMeta = { totalScanned: data.total, totalPages: data.pages };
-  };
-
   try {
-    await runScraper(wrappedSend, () => aborted, maxPages);
+    await runScraper(send, () => aborted, maxPages);
   } catch (e) {
     send('error', { msg: e.message });
-  }
-
-  // Save results to HTML file
-  if (allResults.length > 0 && !aborted) {
-    try {
-      const now = new Date();
-      const ts = now.toISOString().replace(/[:.]/g, '-').substring(0, 16);
-      const filename = `scan-${ts}.html`;
-      const html = generateResultsHTML(allResults, { ...summaryMeta, scanDate: now });
-      await fs.writeFile(join(RESULTS_DIR, filename), html, 'utf8');
-      send('saved', { filename, url: `/results/${filename}` });
-    } catch (e) {
-      send('log', { msg: `⚠️ Uloženie zlyhalo: ${e.message}` });
-    }
   }
 
   send('done', {});

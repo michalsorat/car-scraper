@@ -1,10 +1,10 @@
 import { parse } from 'node-html-parser';
 import { getListing, insertListing, updatePrice } from './db.js';
 
-const BASE_PARAMS  = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=';
-const BASE_URL     = 'https://auto.bazos.sk/';
-const OLLAMA_URL   = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'gemma4:4b';
+const BASE_PARAMS   = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=';
+const BASE_URL      = 'https://auto.bazos.sk/';
+const OLLAMA_MODEL  = 'gemma4:e2b';
+const OLLAMA_URL    = 'http://localhost:11434/api/generate';
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -98,76 +98,225 @@ function parseOverviewPage(html) {
 }
 
 // ─────────────────────────────────────────────
-//  EXTRACT PAGE TEXT  (pre Ollamu)
+//  EXTRACT CAR PARAMS  (tabuľka + celý text)
 // ─────────────────────────────────────────────
-function extractPageText(html) {
+function extractCarParams(html) {
   const doc = parse(html);
+  doc.querySelectorAll('script, style, noscript, iframe, head').forEach(el => el.remove());
+
   const mainEl =
     doc.querySelector('.listainzeratu') ||
     doc.querySelector('#inzerat') ||
     doc.querySelector('.inzeratydetail') ||
-    doc.querySelector('article') ||
-    doc.querySelector('main') ||
+    doc.querySelector('body') ||
     doc;
 
-  const descEl = mainEl.querySelector('.popis') || mainEl.querySelector('.textpodsekce') ||
-                 mainEl.querySelector('#popis')  || mainEl.querySelector('.reklamni_box');
+  // Popis pre zobrazenie (krátky)
+  const descEl = mainEl.querySelector('.popis') || mainEl.querySelector('#popis') ||
+                 mainEl.querySelector('.textpodsekce') || mainEl.querySelector('.reklamni_box');
+  const description = (descEl ? descEl.text : '').replace(/\s+/g, ' ').trim().substring(0, 300);
 
-  const description = (descEl ? descEl.text : mainEl.text).replace(/\s+/g, ' ').trim().substring(0, 300);
-  const rawText     = mainEl.text.replace(/\s+/g, ' ').trim().substring(0, 2000);
-
-  return { description, rawText };
-}
-
-// ─────────────────────────────────────────────
-//  OLLAMA  —  AI extrakcia
-// ─────────────────────────────────────────────
-async function checkOllama() {
-  try {
-    const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(5000) });
-    return resp.ok;
-  } catch {
-    return false;
+  // Štruktúrované riadky tabuľky parametrov (kľúč: hodnota) — najpresnejší zdroj
+  const lines = [];
+  for (const row of mainEl.querySelectorAll('tr')) {
+    const cells = row.querySelectorAll('td, th');
+    if (cells.length >= 2) {
+      const key = cells[0].text.trim().replace(/:$/, '');
+      const val = cells[1].text.trim();
+      if (key && val) lines.push(`${key}: ${val}`);
+    }
   }
+  // Fallback: definition listy
+  if (lines.length === 0) {
+    for (const dt of mainEl.querySelectorAll('dt')) {
+      const dd = dt.nextElementSibling;
+      if (dd?.tagName?.toLowerCase() === 'dd') {
+        const key = dt.text.trim().replace(/:$/, '');
+        const val = dd.text.trim();
+        if (key && val) lines.push(`${key}: ${val}`);
+      }
+    }
+  }
+
+  // Celý text stránky — fallback keď tabuľka chýba alebo je neúplná
+  const bodyText = mainEl.text.replace(/\s+/g, ' ').trim().substring(0, 1500);
+
+  return { description, params: lines.join('\n'), bodyText };
 }
 
-async function callOllama(title, rawText) {
-  const prompt = `Analyzuj tento inzerát na auto a extrahuj hodnoty. Vráť VÝLUČNE JSON objekt, žiadny iný text.
+// ─────────────────────────────────────────────
+//  CONCURRENCY HELPER
+// ─────────────────────────────────────────────
+async function withConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
-Formát:
-{"power_kw": číslo alebo null, "mileage_km": číslo alebo null, "year": číslo alebo null, "fuel": "Benzín" alebo "Diesel" alebo "Hybrid" alebo "Plug-in hybrid" alebo "Elektro" alebo null}
+// ─────────────────────────────────────────────
+//  REGEX EXTRAKCIA  (názov + tabuľka parametrov)
+// ─────────────────────────────────────────────
+function regexExtract(title, params, bodyText = '') {
+  // src = názov + tabuľka + celý text (pre výkon, rok, palivo)
+  // nájazd hľadáme ZÁMERNÉ iba v tabuľke a názve — bodyText obsahuje šum
+  const src = `${title}\n${params}\n${bodyText}`;
 
-Poznámky:
-- power_kw: výkon motora v kilowattoch (nie v koňoch)
-- mileage_km: celkový nájazd v kilometroch
-- year: rok výroby vozidla (4-ciferné číslo)
-- fuel: typ paliva podľa zoznamu, alebo null ak nevieš určiť
+  // ── Výkon ──
+  let power = null;
+  // "150kW", "150 kW", "150KW" — min 2 číslice aby sme nechytili napr. "5kW"
+  let m = src.match(/\b(\d{2,3}(?:[.,]\d)?)\s*[kK][wW]\b/);
+  if (m) power = Math.round(parseFloat(m[1].replace(',', '.')));
+  // "204PS", "204 PS", "204hp", "204 hp", "204cv"
+  if (!power) {
+    m = src.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:PS|HP|hp|cv|CV)\b/);
+    if (m) power = Math.round(parseFloat(m[1].replace(',', '.')) * 0.7355);
+  }
 
-Inzerát:
+  // ── Nájazd ──
+  // POZOR: chceme len skutočný nájazd (km), nie "5000km servis", "každých 10000km" atď.
+  // Preto hľadáme len v riadkoch tabuľky kde kľúč obsahuje "najazdené/nájazd/km/tachometer"
+  let mileage = null;
+  const mileageLineMatch = params.match(
+    /(?:najazdené|nájazd|km|tachometer|počet\s*km)[^\n]*?:\s*([0-9][0-9 .]{2,})\s*km/i
+  );
+  if (mileageLineMatch) {
+    mileage = parseInt(mileageLineMatch[1].replace(/[ .]/g, ''));
+  }
+  // Fallback na názov: "85000km", "85 000 km", "85.000km" — min 5 číslic
+  if (!mileage) {
+    m = title.match(/\b(\d{1,3})[. ]?(\d{3})\s*km\b/i);
+    if (m) mileage = parseInt(m[1] + m[2]);
+  }
+  // "85tkm", "85tis" v názve
+  if (!mileage) {
+    m = title.match(/\b(\d{2,3})\s*t(?:is\.?|km)\b/i);
+    if (m) mileage = parseInt(m[1]) * 1000;
+  }
+
+  // ── Rok výroby ──
+  let year = null;
+  // Najprv hľadáme v tabuľke: riadok s "rok" alebo "r.v." alebo "výroba"
+  const yearLineMatch = params.match(
+    /(?:rok[^\n]*?výrob|rok[^\n]*?registr|r\.?\s*v\.?)[^\n]*?:\s*(20[1-2]\d)\b/i
+  );
+  if (yearLineMatch) {
+    year = parseInt(yearLineMatch[1]);
+  }
+  // Fallback: akékoľvek 4-ciferné číslo 2015–2029 v celom texte
+  if (!year) {
+    m = src.match(/\b(20(?:1[5-9]|2[0-9]))\b/);
+    if (m) year = parseInt(m[1]);
+  }
+
+  // ── Palivo ──
+  let fuel = null;
+  const tl = src.toLowerCase();
+  // Poradie je dôležité — špecifickejšie pred všeobecnejším
+  if (/plug.?in|phev/.test(tl))                                          fuel = 'Plug-in hybrid';
+  else if (/mild.?hybrid/.test(tl))                                      fuel = 'Hybrid';
+  else if (/hybrid/.test(tl))                                            fuel = 'Hybrid';
+  else if (/elektr|e-tron|e-golf|ioniq|bev|\bid\.?\d|\bev\b/.test(tl))  fuel = 'Elektro';
+  else if (/diesel|nafta|\btdi\b|\bcdi\b|\bhdi\b|\bdci\b|\bcrdi\b|\bjtd\b|\bd4\b|\bd5\b/.test(tl)) fuel = 'Diesel';
+  else if (/benz[ií]n|benzin|\btsi\b|\btfsi\b|\bgdi\b|\bt-gdi\b|\bmpi\b|\bgti\b|\bgsi\b/.test(tl)) fuel = 'Benzín';
+
+  return { power, mileage, year, fuel };
+}
+
+// ─────────────────────────────────────────────
+//  OLLAMA  —  AI extrakcia (len pre chýbajúce polia)
+// ─────────────────────────────────────────────
+async function callOllama(title, params, bodyText, missing) {
+  const fields = [];
+  if (missing.power)   fields.push(`"power_kw": výkon v kW (ak PS/hp prepočítaj *0.7355) alebo null`);
+  if (missing.mileage) fields.push(`"mileage_km": celkový nájazd v km alebo null`);
+  if (missing.year)    fields.push(`"year": rok výroby (4-ciferné) alebo null`);
+  if (missing.fuel)    fields.push(`"fuel": "Benzín" alebo "Diesel" alebo "Hybrid" alebo "Plug-in hybrid" alebo "Elektro" alebo null`);
+
+  const paramsSection = params
+    ? `Parametre (tabuľka):\n${params}`
+    : `Text inzerátu:\n${bodyText}`;
+
+  const prompt = `Extrahuj chýbajúce parametre auta. Vráť VÝLUČNE JSON objekt, žiadny iný text.
+
+{${fields.join(', ')}}
+
 Názov: ${title}
-Text: ${rawText.substring(0, 1500)}`;
+${paramsSection}`;
 
-  const resp = await fetch(OLLAMA_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt,
-      stream: false,
-      format: 'json',
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
+
+  let resp;
+  try {
+    resp = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    throw new Error(`Ollama nedostupné: ${e.message}`);
+  }
+  clearTimeout(timer);
 
   if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
-  const data   = await resp.json();
-  const parsed = JSON.parse(data.response);
+
+  const data = await resp.json();
+  const output = data.response || '';
+
+  const match = output.match(/\{[\s\S]*?\}/);
+  if (!match) throw new Error(`Ollama nevrátil JSON. Výstup: ${output.substring(0, 200)}`);
+
+  let parsed;
+  try { parsed = JSON.parse(match[0]); }
+  catch (e) { throw new Error(`Nepodarilo sa parsovať JSON: ${match[0].substring(0, 100)}`); }
 
   return {
     power:   typeof parsed.power_kw   === 'number' ? Math.round(parsed.power_kw)   : null,
     mileage: typeof parsed.mileage_km === 'number' ? Math.round(parsed.mileage_km) : null,
     year:    typeof parsed.year       === 'number' ? Math.round(parsed.year)        : null,
     fuel:    typeof parsed.fuel       === 'string' && parsed.fuel ? parsed.fuel     : null,
+  };
+}
+
+// ─────────────────────────────────────────────
+//  EXTRAKCIA  (regex → Ollama len pre chýbajúce)
+// ─────────────────────────────────────────────
+async function extractCarData(title, params, bodyText, emitLog) {
+  const rx = regexExtract(title, params, bodyText);
+
+  const missing = {
+    power:   rx.power   === null,
+    mileage: rx.mileage === null,
+    year:    rx.year    === null,
+    fuel:    rx.fuel    === null,
+  };
+  const missingCount = Object.values(missing).filter(Boolean).length;
+
+  if (missingCount === 0) {
+    emitLog(`   📐 Regex: výkon ${rx.power} kW | nájazd ${rx.mileage} km | rok ${rx.year} | palivo ${rx.fuel}`);
+    return rx;
+  }
+
+  const missingKeys = Object.entries(missing).filter(([, v]) => v).map(([k]) => k).join(', ');
+  emitLog(`   📐 Regex: výkon ${rx.power ?? '?'} kW | nájazd ${rx.mileage ?? '?'} km | rok ${rx.year ?? '?'} | palivo ${rx.fuel ?? '?'}`);
+  emitLog(`   🤖 Ollama dopĺňa: ${missingKeys}`);
+
+  const ai = await callOllama(title, params, bodyText, missing);
+
+  return {
+    power:   rx.power   ?? ai.power,
+    mileage: rx.mileage ?? ai.mileage,
+    year:    rx.year    ?? ai.year,
+    fuel:    rx.fuel    ?? ai.fuel,
   };
 }
 
@@ -214,17 +363,36 @@ function scorePriceKw(pricePerKw, minPricePerKw) {
 }
 
 // ─────────────────────────────────────────────
+//  SCORING EXPORT  (pre DB view)
+// ─────────────────────────────────────────────
+export function scoreListings(listings) {
+  const filtered = listings.filter(l =>
+    l.power >= 110 &&
+    l.mileage !== null && l.mileage <= 100000 &&
+    l.year >= 2021
+  );
+  const priceKwValues = filtered.filter(l => l.price && l.power).map(l => l.price / l.power);
+  const minPriceKw    = priceKwValues.length > 0 ? Math.min(...priceKwValues) : null;
+  const scored = filtered.map(l => {
+    const priceKwRatio = (l.price && l.power) ? l.price / l.power : null;
+    const scores = {
+      fuel:    scoreFuel(l.fuel),
+      power:   scorePower(l.power),
+      mileage: scoreMileage(l.mileage),
+      priceKw: scorePriceKw(priceKwRatio, minPriceKw),
+      year:    scoreYear(l.year),
+    };
+    return { ...l, scores, totalScore: scores.fuel + scores.power + scores.mileage + scores.priceKw + scores.year, priceKwRatio };
+  });
+  scored.sort((a, b) => b.totalScore - a.totalScore);
+  return scored.map((item, i) => ({ ...item, rank: i + 1 }));
+}
+
+// ─────────────────────────────────────────────
 //  MAIN SCRAPER
 // ─────────────────────────────────────────────
 export async function runScraper(emit, isAborted, maxPages = 0) {
-  // ── Ollama check ──
-  emit('progress', { pct: 2, label: 'Kontrolujem Ollamu...' });
-  const ollamaOk = await checkOllama();
-  if (!ollamaOk) {
-    emit('error', { msg: 'Ollama nebeží. Spusti príkaz: ollama serve' });
-    return;
-  }
-  emit('log', { msg: `✅ Ollama beží (model: ${OLLAMA_MODEL})` });
+  emit('log', { msg: `✅ Ollama (model: ${OLLAMA_MODEL})` });
 
   emit('progress', { pct: 5, label: 'Načítavam prehľadové stránky...' });
   emit('log', { msg: maxPages > 0 ? `Skenujeme ${maxPages} stránok.` : 'Skenujeme všetky stránky.' });
@@ -294,25 +462,22 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
 
   emit('stats', { total: uniqueListings.length, pass: 0, pages: pageCount });
 
-  // ── Phase 2: Detail pages + Ollama (len pre nové) ──
-  emit('progress', { pct: 30, label: 'Načítavam detaily inzerátov...' });
-  const detailed   = [];
-  let newCount     = 0;
-  let cachedCount  = 0;
+  // ── Phase 2a: Rozdeliť na cached vs. nové ──
+  emit('progress', { pct: 30, label: 'Kontrolujem cache...' });
+  let newCount    = 0;
+  let cachedCount = 0;
+  const detailed  = [];
+  const toFetch   = [];   // nové inzeráty čakajúce na fetch + Ollama
 
-  for (let i = 0; i < uniqueListings.length; i++) {
-    if (isAborted()) break;
-    const listing = uniqueListings[i];
-    const bazosId = extractBazosId(listing.url);
-    const pct     = 30 + Math.round((i / uniqueListings.length) * 55);
-
-    // Check DB cache
+  for (const listing of uniqueListings) {
+    const bazosId  = extractBazosId(listing.url);
     const existing = bazosId ? getListing(bazosId) : null;
     if (existing) {
       if (existing.price !== listing.price && listing.price != null) {
         updatePrice(bazosId, listing.price);
         emit('log', { msg: `💰 Zmena ceny: ${existing.title?.substring(0, 40)} → ${listing.price} €` });
       }
+      cachedCount++;
       detailed.push({
         title:       existing.title || listing.title,
         url:         existing.url,
@@ -323,43 +488,59 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
         power:       existing.power,
         fuel:        existing.fuel,
       });
-      cachedCount++;
-      emit('progress', { pct, label: `Cache ${i + 1}/${uniqueListings.length}: ${listing.title.substring(0, 40)}...` });
-      continue;
+    } else {
+      toFetch.push({ listing, bazosId });
     }
+  }
+  emit('log', { msg: `Cache: ${cachedCount}, nové na spracovanie: ${toFetch.length}` });
 
-    // New listing – fetch + AI parse
-    emit('progress', { pct, label: `Detail ${i + 1}/${uniqueListings.length}: ${listing.title.substring(0, 40)}...` });
-    emit('log',      { msg: `🆕 Nový: ${listing.title.substring(0, 50)}` });
+  // ── Phase 2b: Fetch HTML paralelne (max 5) ──
+  if (toFetch.length > 0) {
+    emit('progress', { pct: 35, label: `Sťahujem ${toFetch.length} detailových stránok...` });
 
-    try {
-      const html                  = await fetchHTML(listing.url);
-      const { description, rawText } = extractPageText(html);
-
-      emit('log', { msg: `   🤖 AI parsovanie...` });
-      const aiData = await callOllama(listing.title, rawText);
-      emit('log', { msg: `   → výkon: ${aiData.power ?? '?'} kW | nájazd: ${aiData.mileage ?? '?'} km | rok: ${aiData.year ?? '?'} | palivo: ${aiData.fuel ?? '?'}` });
-
-      const fullListing = {
-        title: listing.title,
-        url:   listing.url,
-        price: listing.price,
-        description,
-        ...aiData,
-      };
-
-      if (bazosId) {
-        insertListing({ bazos_id: bazosId, ...fullListing, ai_parsed: 1 });
+    const fetched = await withConcurrency(toFetch, 5, async ({ listing, bazosId }, i) => {
+      if (isAborted()) return null;
+      emit('progress', {
+        pct: 35 + Math.round((i / toFetch.length) * 20),
+        label: `Fetch ${i + 1}/${toFetch.length}: ${listing.title.substring(0, 40)}...`,
+      });
+      try {
+        const html                                    = await fetchHTML(listing.url);
+        const { description, params, bodyText }     = extractCarParams(html);
+        return { listing, bazosId, description, params };
+      } catch (e) {
+        emit('log', { msg: `   ⚠️ Fetch chyba: ${listing.title.substring(0, 40)} — ${e.message}` });
+        return null;
       }
+    });
 
-      detailed.push(fullListing);
-      newCount++;
-    } catch (e) {
-      emit('log', { msg: `   ⚠️ Chyba: ${e.message}` });
-      detailed.push({ ...listing, year: null, mileage: null, power: null, fuel: null, description: '' });
+    // ── Phase 2c: Ollama sekvenčne (GPU zvládne iba 1) ──
+    emit('progress', { pct: 55, label: 'AI parsovanie...' });
+    const valid = fetched.filter(Boolean);
+
+    for (let i = 0; i < valid.length; i++) {
+      if (isAborted()) break;
+      const { listing, bazosId, description, params } = valid[i];
+      emit('progress', {
+        pct: 55 + Math.round((i / valid.length) * 30),
+        label: `AI ${i + 1}/${valid.length}: ${listing.title.substring(0, 40)}...`,
+      });
+      emit('log', { msg: `🆕 Nový: ${listing.title.substring(0, 50)}` });
+
+      try {
+        const aiData = await extractCarData(listing.title, params, bodyText, msg => emit('log', { msg }));
+        emit('log', { msg: `   → výkon: ${aiData.power ?? '?'} kW | nájazd: ${aiData.mileage ?? '?'} km | rok: ${aiData.year ?? '?'} | palivo: ${aiData.fuel ?? '?'}` });
+
+        const fullListing = { title: listing.title, url: listing.url, price: listing.price, description, ...aiData };
+        if (bazosId) insertListing({ bazos_id: bazosId, ...fullListing, ai_parsed: 1 });
+
+        detailed.push(fullListing);
+        newCount++;
+      } catch (e) {
+        emit('log', { msg: `   ⚠️ AI chyba: ${e.message}` });
+        detailed.push({ ...listing, year: null, mileage: null, power: null, fuel: null, description });
+      }
     }
-
-    await sleep(300);
   }
 
   emit('log', { msg: `Nové: ${newCount}, z cache: ${cachedCount}` });
