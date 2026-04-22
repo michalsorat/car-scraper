@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🚗 Bazos Auto Skener</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --card2: #22263a;
+      --accent: #4f8ef7;
+      --accent2: #7c3aed;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --text: #e8eaf6;
+      --muted: #8892b0;
+      --border: #2d3250;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1a1d27 0%, #22263a 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 24px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .header-left h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-left p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+    .date-badge {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .date-badge span { color: var(--accent); font-weight: 600; }
+    /* ── Main ── */
+    .main { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+    /* ── Filter Panel ── */
+    .filter-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .filter-panel h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+    .chip strong { color: var(--accent); }
+    /* ── Start Button ── */
+    .start-wrap { text-align: center; margin: 32px 0; }
+    .btn-start {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 14px 48px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      letter-spacing: 0.5px;
+    }
+    .btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-start:active { transform: translateY(0); }
+    .btn-start:disabled { opacity: 0.5; cursor: default; transform: none; }
+    /* ── Progress ── */
+    #progress-section { display: none; margin-bottom: 24px; }
+    .progress-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .progress-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-label { font-size: 0.9rem; color: var(--text); }
+    .progress-bar-wrap {
+      background: var(--card2);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-log {
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-height: 80px;
+      overflow-y: auto;
+    }
+    .progress-log div { padding: 1px 0; }
+    /* ── Summary Banner ── */
+    .summary-banner {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 24px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .summary-stat { text-align: center; }
+    .summary-stat .val {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .summary-stat .lbl {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .summary-divider { width: 1px; height: 40px; background: var(--border); }
+    /* ── Result Cards ── */
+    #results-section { display: none; }
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .results-header h2 { font-size: 1rem; font-weight: 600; color: var(--muted); }
+    .car-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .car-card:hover { border-color: var(--accent); }
+    .car-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px 12px;
+      gap: 12px;
+    }
+    .rank-score {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .rank {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      width: 28px;
+    }
+    .score-ring {
+      position: relative;
+      width: 52px; height: 52px;
+      flex-shrink: 0;
+    }
+    .score-ring svg { position: absolute; top: 0; left: 0; transform: rotate(-90deg); }
+    .score-ring .score-text {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.75rem; font-weight: 700;
+      color: var(--text);
+    }
+    .car-title-area { flex: 1; min-width: 0; }
+    .car-title {
+      font-size: 0.97rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .car-title a { color: inherit; text-decoration: none; }
+    .car-title a:hover { color: var(--accent); }
+    .car-price {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--green);
+      flex-shrink: 0;
+    }
+    .car-card-body { padding: 0 20px 16px; }
+    .car-specs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .spec-tag {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .spec-tag .icon { font-size: 0.85rem; }
+    .spec-tag .val { color: var(--text); font-weight: 500; }
+    .spec-tag .lbl { color: var(--muted); }
+    .score-breakdown {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .score-part {
+      background: var(--card2);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+    }
+    .score-part .pts { color: var(--accent); font-weight: 600; }
+    .score-part .cat { color: var(--muted); }
+    .car-desc {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.5;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 4px;
+    }
+    .warning {
+      font-size: 0.75rem;
+      color: var(--yellow);
+      margin-top: 6px;
+    }
+    /* ── Fuel badge colors ── */
+    .fuel-benzin { border-color: #f59e0b40; color: #f59e0b; }
+    .fuel-hybrid { border-color: #22c55e40; color: #22c55e; }
+    .fuel-plugin { border-color: #60a5fa40; color: #60a5fa; }
+    .fuel-elektro { border-color: #a78bfa40; color: #a78bfa; }
+    .fuel-diesel { border-color: #ef444440; color: #ef4444; }
+    /* ── No results ── */
+    .no-results {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted);
+    }
+    .no-results .emoji { font-size: 2.5rem; margin-bottom: 12px; }
+    /* ── Error ── */
+    .error-box {
+      background: #ef444420;
+      border: 1px solid #ef444440;
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+    }
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>🚗 Bazos Auto Skener</h1>
+    <p>auto.bazos.sk · 23 000 – 35 000 € · Dnešné inzeráty</p>
+  </div>
+  <div class="date-badge">Dnes: <span id="today-label">—</span></div>
+</div>
+
+<div class="main">
+
+  <!-- FILTER INFO -->
+  <div class="filter-panel">
+    <h3>Aktívne filtre</h3>
+    <div class="filter-chips">
+      <div class="chip">💰 Cena: <strong>23 000 – 35 000 €</strong></div>
+      <div class="chip">⚡ Výkon: <strong>≥ 110 kW</strong></div>
+      <div class="chip">📍 Nájazd: <strong>≤ 100 000 km</strong></div>
+      <div class="chip">📅 Rok výroby: <strong>≥ 2021</strong></div>
+      <div class="chip">🗓️ Dátum: <strong>len dnešné</strong></div>
+    </div>
+  </div>
+
+  <!-- START BUTTON -->
+  <div class="start-wrap">
+    <button class="btn-start" id="startBtn" onclick="startScraping()">▶ Spustiť skenovanie</button>
+  </div>
+
+  <!-- PROGRESS -->
+  <div id="progress-section">
+    <div class="progress-card">
+      <div class="progress-top">
+        <div class="spinner"></div>
+        <div class="progress-label" id="progress-label">Inicializujem...</div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="progress-log" id="progress-log"></div>
+    </div>
+  </div>
+
+  <!-- ERROR BOX -->
+  <div class="error-box" id="error-box" style="display:none"></div>
+
+  <!-- RESULTS -->
+  <div id="results-section">
+    <div class="summary-banner">
+      <div class="summary-stat">
+        <div class="val" id="stat-total">0</div>
+        <div class="lbl">Dnešných inzerátov</div>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <div class="val" id="stat-pass">0</div>
+        <div class="lbl">Prešlo filtrom</div>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <div class="val" id="stat-pages">0</div>
+        <div class="lbl">Stránok prehľadaných</div>
+      </div>
+    </div>
+    <div class="results-header">
+      <h2 id="results-title">Výsledky</h2>
+    </div>
+    <div id="car-list"></div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const BASE_SEARCH = '?hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=&crp=&kitx=ano';
+const BASE_URL    = 'https://auto.bazos.sk/';
+
+// CORS proxies – tried in order
+const PROXIES = [
+  url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+const SK_MONTHS = {
+  januára:0,februára:1,marca:2,apríla:3,mája:4,júna:5,
+  júla:6,augusta:7,septembra:8,októbra:9,novembra:10,decembra:11,
+  // Czech fallbacks
+  ledna:0,února:1,března:2,dubna:3,května:4,června:5,
+  července:6,srpna:7,září:8,října:9,listopadu:10,prosince:11
+};
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let todayDate = null;
+let aborted = false;
+
+// ─────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────
+function todayStr() {
+  return todayDate.toLocaleDateString('sk-SK', {day:'numeric',month:'long',year:'numeric'});
+}
+
+function setToday() {
+  todayDate = new Date();
+  todayDate.setHours(0,0,0,0);
+  document.getElementById('today-label').textContent =
+    todayDate.toLocaleDateString('sk-SK',{day:'numeric',month:'long',year:'numeric'});
+}
+
+function isSameDay(d) {
+  if (!d) return false;
+  const x = new Date(d); x.setHours(0,0,0,0);
+  return x.getTime() === todayDate.getTime();
+}
+
+function isOlderThanToday(d) {
+  if (!d) return false;
+  const x = new Date(d); x.setHours(0,0,0,0);
+  return x.getTime() < todayDate.getTime();
+}
+
+function parseSkDate(text) {
+  if (!text) return null;
+  text = text.trim();
+  if (/dnes/i.test(text)) return new Date();
+
+  // "21. apríla 2026"
+  const m1 = text.match(/(\d+)\.\s+([a-záéíóúýčšžťňľŕôäůě]+)\s+(\d{4})/i);
+  if (m1) {
+    const mon = SK_MONTHS[m1[2].toLowerCase()];
+    if (mon !== undefined) return new Date(+m1[3], mon, +m1[1]);
+  }
+  // "21.4.2026" or "21.04.2026"
+  const m2 = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (m2) return new Date(+m2[3], +m2[2]-1, +m2[1]);
+
+  return null;
+}
+
+function pageUrl(offset) {
+  if (offset === 0) return BASE_URL + BASE_SEARCH;
+  return `${BASE_URL}${offset}/${BASE_SEARCH}`;
+}
+
+// ─────────────────────────────────────────────
+//  FETCH WITH PROXY FALLBACK
+// ─────────────────────────────────────────────
+async function fetchHTML(url) {
+  let lastErr;
+  for (const proxyFn of PROXIES) {
+    try {
+      const proxyUrl = proxyFn(url);
+      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('json')) {
+        const j = await resp.json();
+        // allorigins / codetabs style
+        return j.contents || j.data || '';
+      }
+      return await resp.text();
+    } catch(e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Všetky proxy zlyhali');
+}
+
+// ─────────────────────────────────────────────
+//  PARSE OVERVIEW PAGE
+// ─────────────────────────────────────────────
+function parseOverviewPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const listings = [];
+
+  // bazos.sk uses divs with class containing "inzerat"
+  // Try broad selectors; the site uses .inzerat or .inzeratyflex wrapper
+  const candidates = doc.querySelectorAll(
+    '.inzerat, .inzeratyflex, [class^="inzerat"], [class*=" inzerat"]'
+  );
+
+  // Fallback: find all h2 > a that look like listing links
+  const links = candidates.length > 0
+    ? [...candidates]
+    : [...doc.querySelectorAll('h2 a[href*=".html"]')].map(a => a.closest('div') || a.parentElement);
+
+  const seen = new Set();
+
+  (candidates.length > 0 ? candidates : links).forEach(item => {
+    // ── Title & URL ──
+    const anchor = item.querySelector('h2 a, .nadpis a') ||
+                   (item.tagName === 'A' ? item : null);
+    if (!anchor) return;
+    const href = anchor.getAttribute('href') || '';
+    if (!href || href === '#') return;
+    const url = href.startsWith('http') ? href : 'https://auto.bazos.sk' + href;
+    if (seen.has(url)) return;
+    seen.add(url);
+    const title = anchor.textContent.trim();
+    if (!title) return;
+
+    // ── Price ──
+    let price = null;
+    const priceEl = item.querySelector('.inzeratycena, .cena, [class*="cena"]');
+    if (priceEl) {
+      const pt = priceEl.textContent.replace(/\s+/g, '');
+      const pm = pt.match(/(\d[\d]*)/);
+      if (pm) price = parseInt(pm[1]);
+    } else {
+      // fallback: look for € sign
+      const boldEls = item.querySelectorAll('b, strong');
+      boldEls.forEach(b => {
+        const t = b.textContent.replace(/\s/g,'');
+        if (/€/.test(t) || /\d{4,}/.test(t)) {
+          const m = t.match(/(\d+)/);
+          if (m && !price) price = parseInt(m[1]);
+        }
+      });
+    }
+
+    // ── Date ──
+    let date = null;
+    const dateEl = item.querySelector('.velikost10, .datum, [class*="datum"], [class*="date"]');
+    if (dateEl) {
+      date = parseSkDate(dateEl.textContent);
+    }
+    if (!date) {
+      // fallback: scan all small text
+      item.querySelectorAll('span, small, div').forEach(el => {
+        if (date) return;
+        const t = el.textContent;
+        if (/\d{1,2}\.\s*[a-záéíóú]+\s+\d{4}|\d{1,2}\.\d{1,2}\.\d{4}|dnes/i.test(t)) {
+          date = parseSkDate(t);
+        }
+      });
+    }
+
+    // ── Description snippet ──
+    const descEl = item.querySelector('.popis, .opis, [class*="popis"], [class*="opis"]');
+    const description = descEl ? descEl.textContent.trim().substring(0, 200) : '';
+
+    listings.push({ title, url, price, date, description });
+  });
+
+  return listings;
+}
+
+// ─────────────────────────────────────────────
+//  PARSE DETAIL PAGE
+// ─────────────────────────────────────────────
+function parseDetailPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const res = { year: null, mileage: null, power: null, fuel: null, description: '' };
+
+  // ── Strategy 1: Parameter table rows ──
+  // bazos.sk auto detail pages have a table with label/value pairs
+  const tableRows = doc.querySelectorAll(
+    'table tr, .listainzeratu tr, .parametretabulka tr, .tabledivide tr'
+  );
+  tableRows.forEach(row => {
+    const cells = row.querySelectorAll('td, th');
+    if (cells.length < 2) return;
+    const label = cells[0].textContent.trim().toLowerCase().replace(/:/g,'');
+    const value = cells[1].textContent.trim();
+
+    if (/rok\s*v[ýy]rob/.test(label)) {
+      const m = value.match(/\d{4}/); if (m) res.year = +m[0];
+    } else if (/najazde|km\s*stav|po[cč]et\s*km|tach|km/.test(label) && !label.includes('cena')) {
+      const m = value.replace(/\s/g,'').match(/(\d+)/); if (m) res.mileage = +m[0];
+    } else if (/v[ýy]kon|kw|horse|hp/.test(label)) {
+      const m = value.match(/(\d+)/); if (m) res.power = +m[0];
+    } else if (/palivo|druh\s*paliva|motor|pohon/.test(label)) {
+      res.fuel = value;
+    }
+  });
+
+  // ── Strategy 2: Definition lists / spans ──
+  if (!res.year || !res.mileage || !res.power || !res.fuel) {
+    const textBlocks = doc.querySelectorAll('.listainzeratu, .popis, .textpodsekce, #popis, main, article, .ad-detail');
+    textBlocks.forEach(block => {
+      const t = block.textContent;
+      if (!res.year) {
+        const m = t.match(/rok\s*v[ýy]rob[ay]?\s*:?\s*(20[0-9]{2})/i);
+        if (m) res.year = +m[1];
+      }
+      if (!res.mileage) {
+        const m = t.match(/najazde[nň][éy]?\s*:?\s*([\d\s]+)\s*km/i);
+        if (m) res.mileage = +m[1].replace(/\s/g,'');
+      }
+      if (!res.power) {
+        const m = t.match(/v[ýy]kon\s*:?\s*([\d]+)\s*kw/i);
+        if (m) res.power = +m[1];
+      }
+      if (!res.fuel) {
+        const m = t.match(/palivo\s*:?\s*([^\n\r,]{2,25})/i);
+        if (m) res.fuel = m[1].trim();
+      }
+    });
+  }
+
+  // ── Strategy 3: Raw text regex fallback ──
+  const fullText = doc.body ? doc.body.textContent : '';
+
+  if (!res.year) {
+    const m = fullText.match(/\b(202[1-9]|2030)\b/);
+    if (m) res.year = +m[1];
+  }
+  if (!res.mileage) {
+    // Find patterns like "45 000 km" or "45000km"
+    const m = fullText.match(/(\d[\d\s]{2,7})\s*km/i);
+    if (m) {
+      const val = +m[1].replace(/\s/g,'');
+      if (val > 0 && val < 999999) res.mileage = val;
+    }
+  }
+  if (!res.power) {
+    const m = fullText.match(/(\d{2,3})\s*kw/i);
+    if (m) res.power = +m[1];
+  }
+  if (!res.fuel) {
+    const t = fullText.toLowerCase();
+    if (/plug[- ]?in|phev/.test(t))        res.fuel = 'Plug-in hybrid';
+    else if (/mild[- ]?hybrid/.test(t))    res.fuel = 'Mild hybrid';
+    else if (/hybrid/.test(t))             res.fuel = 'Hybrid';
+    else if (/elektr|bev\b/.test(t))       res.fuel = 'Elektro';
+    else if (/benz[ií]n/.test(t))          res.fuel = 'Benzín';
+    else if (/diesel|nafta/.test(t))       res.fuel = 'Diesel';
+    else if (/lpg/.test(t))               res.fuel = 'LPG';
+  }
+
+  // ── Description ──
+  const descEl = doc.querySelector('.popis, .textpodsekce, #popis, .reklamni_box, main article') ||
+                 doc.querySelector('.ad-description, .description');
+  res.description = (descEl ? descEl.textContent : fullText)
+    .replace(/\s+/g,' ').trim().substring(0, 300);
+
+  return res;
+}
+
+// ─────────────────────────────────────────────
+//  SCORING
+// ─────────────────────────────────────────────
+function scoreFuel(fuel) {
+  if (!fuel) return 0;
+  const f = fuel.toLowerCase();
+  if (/plug[- ]?in|phev/.test(f))          return 12;
+  if (/mild[- ]?hybrid/.test(f))           return 15;
+  if (/hybrid/.test(f))                    return 15;
+  if (/benz[ií]n/.test(f))                 return 20;
+  if (/elektr|bev/.test(f))               return 6;
+  if (/diesel|nafta/.test(f))             return 4;
+  return 0;
+}
+function scorePower(kw) {
+  if (!kw) return 0;
+  if (kw >= 151) return 25;
+  if (kw >= 131) return 18;
+  if (kw >= 110) return 10;
+  return 0;
+}
+function scoreMileage(km) {
+  if (km === null || km === undefined) return 0;
+  if (km <= 30000)  return 25;
+  if (km <= 60000)  return 18;
+  if (km <= 80000)  return 12;
+  if (km <= 100000) return 6;
+  return 0;
+}
+function scoreYear(y) {
+  if (!y) return 0;
+  if (y >= 2024) return 10;
+  if (y === 2023) return 8;
+  if (y === 2022) return 5;
+  if (y === 2021) return 3;
+  return 0;
+}
+function scorePriceKw(pricePerKw, minPricePerKw) {
+  if (!pricePerKw || !minPricePerKw || minPricePerKw <= 0) return 0;
+  return Math.round((minPricePerKw / pricePerKw) * 20);
+}
+
+function fuelClass(fuel) {
+  if (!fuel) return '';
+  const f = fuel.toLowerCase();
+  if (/plug[- ]?in|phev/.test(f)) return 'fuel-plugin';
+  if (/hybrid/.test(f))           return 'fuel-hybrid';
+  if (/benz/.test(f))             return 'fuel-benzin';
+  if (/elektr/.test(f))           return 'fuel-elektro';
+  if (/diesel|nafta/.test(f))     return 'fuel-diesel';
+  return '';
+}
+
+function fuelEmoji(fuel) {
+  if (!fuel) return '❓';
+  const f = fuel.toLowerCase();
+  if (/plug[- ]?in|phev/.test(f)) return '🔌';
+  if (/hybrid/.test(f))           return '♻️';
+  if (/benz/.test(f))             return '⛽';
+  if (/elektr/.test(f))           return '⚡';
+  if (/diesel|nafta/.test(f))     return '🛢️';
+  return '❓';
+}
+
+function scoreRingColor(score) {
+  if (score >= 70) return '#22c55e';
+  if (score >= 50) return '#f59e0b';
+  return '#ef4444';
+}
+
+// ─────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────
+function setProgress(pct, label) {
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = label;
+}
+function log(msg) {
+  const el = document.getElementById('progress-log');
+  const d = document.createElement('div');
+  d.textContent = '→ ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = '⚠️ ' + msg;
+  el.style.display = 'block';
+}
+
+function renderScoreRing(score) {
+  const r = 20, c = 2 * Math.PI * r;
+  const color = scoreRingColor(score);
+  const dash = (score / 100) * c;
+  return `
+    <div class="score-ring">
+      <svg width="52" height="52" viewBox="0 0 52 52">
+        <circle cx="26" cy="26" r="${r}" fill="none" stroke="#2d3250" stroke-width="5"/>
+        <circle cx="26" cy="26" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+          stroke-dasharray="${dash.toFixed(1)} ${(c - dash).toFixed(1)}"
+          stroke-linecap="round"/>
+      </svg>
+      <div class="score-text">${score}</div>
+    </div>`;
+}
+
+function renderCard(item, rank) {
+  const priceKw = item.price && item.power ? (item.price / item.power).toFixed(1) : '—';
+  const warnings = [];
+  if (!item.power)   warnings.push('výkon sa nepodarilo zistiť');
+  if (!item.mileage && item.mileage !== 0) warnings.push('nájazd sa nepodarilo zistiť');
+  if (!item.year)    warnings.push('rok výroby sa nepodarilo zistiť');
+  if (!item.fuel)    warnings.push('druh paliva sa nepodarilo zistiť');
+
+  const fuelLabel = item.fuel || 'Neuvedené';
+
+  return `
+  <div class="car-card">
+    <div class="car-card-header">
+      <div class="rank-score">
+        <div class="rank">#${rank}</div>
+        ${renderScoreRing(item.totalScore)}
+      </div>
+      <div class="car-title-area">
+        <div class="car-title">
+          <a href="${item.url}" target="_blank" rel="noopener">${escHtml(item.title)}</a>
+        </div>
+      </div>
+      <div class="car-price">${item.price ? item.price.toLocaleString('sk-SK') + ' €' : '—'}</div>
+    </div>
+    <div class="car-card-body">
+      <div class="car-specs">
+        <div class="spec-tag ${fuelClass(item.fuel)}">
+          <span class="icon">${fuelEmoji(item.fuel)}</span>
+          <span class="val">${escHtml(fuelLabel)}</span>
+        </div>
+        <div class="spec-tag">
+          <span class="icon">⚡</span>
+          <span class="val">${item.power ? item.power + ' kW' : '—'}</span>
+          <span class="lbl">výkon</span>
+        </div>
+        <div class="spec-tag">
+          <span class="icon">📍</span>
+          <span class="val">${item.mileage !== null && item.mileage !== undefined ? item.mileage.toLocaleString('sk-SK') + ' km' : '—'}</span>
+          <span class="lbl">nájazd</span>
+        </div>
+        <div class="spec-tag">
+          <span class="icon">📅</span>
+          <span class="val">${item.year || '—'}</span>
+          <span class="lbl">rok</span>
+        </div>
+        <div class="spec-tag">
+          <span class="icon">📊</span>
+          <span class="val">${priceKw} €/kW</span>
+          <span class="lbl">cena/kW</span>
+        </div>
+      </div>
+      <div class="score-breakdown">
+        <div class="score-part"><span class="pts">${item.scores.fuel}/20</span> <span class="cat">palivo</span></div>
+        <div class="score-part"><span class="pts">${item.scores.power}/25</span> <span class="cat">výkon</span></div>
+        <div class="score-part"><span class="pts">${item.scores.mileage}/25</span> <span class="cat">nájazd</span></div>
+        <div class="score-part"><span class="pts">${item.scores.priceKw}/20</span> <span class="cat">cena/kW</span></div>
+        <div class="score-part"><span class="pts">${item.scores.year}/10</span> <span class="cat">rok</span></div>
+      </div>
+      ${item.description ? `<div class="car-desc">${escHtml(item.description.substring(0, 200))}${item.description.length > 200 ? '…' : ''}</div>` : ''}
+      ${warnings.length ? `<div class="warning">⚠️ Poznámka: ${warnings.join(', ')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────
+//  MAIN SCRAPING FLOW
+// ─────────────────────────────────────────────
+async function startScraping() {
+  aborted = false;
+  setToday();
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('startBtn').textContent = '⏳ Scrapujem...';
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('progress-log').innerHTML = '';
+  document.getElementById('car-list').innerHTML = '';
+
+  try {
+    // ── Phase 1: Collect today's listings from overview pages ──
+    const todayListings = [];
+    let pageOffset = 0;
+    let pageCount = 0;
+    let stop = false;
+
+    setProgress(5, 'Načítavam prehľadové stránky...');
+    log('Štartujem skenovanie: ' + todayDate.toLocaleDateString('sk-SK'));
+
+    while (!stop && !aborted) {
+      const url = pageUrl(pageOffset);
+      log(`Stránka ${pageOffset === 0 ? 1 : pageOffset/20 + 1}: ${url}`);
+      setProgress(5 + Math.min(pageCount * 5, 25), `Stránka ${pageCount + 1}...`);
+
+      let html;
+      try {
+        html = await fetchHTML(url);
+      } catch(e) {
+        showError('Nepodarilo sa načítať stránku: ' + e.message +
+          '. Skúste otvoriť bazos.sk ručne a stlačiť F12 → Console → Skopírujte prípadnú chybu CORS.');
+        break;
+      }
+
+      const listings = parseOverviewPage(html);
+      if (listings.length === 0) {
+        log('Na stránke sa nenašli žiadne inzeráty – ukončujem.');
+        break;
+      }
+
+      let foundOlder = false;
+      for (const l of listings) {
+        if (isSameDay(l.date)) {
+          todayListings.push(l);
+        } else if (isOlderThanToday(l.date)) {
+          log(`Narazil som na starší dátum (${l.date ? l.date.toLocaleDateString('sk-SK') : 'neznámy'}) – zastavujem.`);
+          foundOlder = true;
+          stop = true;
+          break;
+        }
+        // If date is null/future, continue (might be mis-parsed)
+      }
+
+      if (!foundOlder && listings.length < 20) {
+        // Fewer than a full page – probably last page
+        log('Posledná stránka dosiahnutá.');
+        stop = true;
+      }
+
+      pageCount++;
+      pageOffset += 20;
+
+      if (!stop) await sleep(400); // polite delay
+    }
+
+    log(`Celkom dnešných inzerátov: ${todayListings.length}`);
+    document.getElementById('stat-total').textContent = todayListings.length;
+    document.getElementById('stat-pages').textContent = pageCount;
+
+    if (todayListings.length === 0) {
+      setProgress(100, 'Hotovo');
+      document.getElementById('results-section').style.display = 'block';
+      document.getElementById('car-list').innerHTML = `
+        <div class="no-results">
+          <div class="emoji">😴</div>
+          <div>Dnes zatiaľ žiadne nové inzeráty.</div>
+        </div>`;
+      document.getElementById('results-title').textContent = '';
+      document.getElementById('stat-pass').textContent = '0';
+      resetButton();
+      return;
+    }
+
+    // ── Phase 2: Fetch detail pages ──
+    setProgress(30, 'Načítavam detaily inzerátov...');
+    const detailed = [];
+
+    for (let i = 0; i < todayListings.length; i++) {
+      const listing = todayListings[i];
+      const pct = 30 + Math.round((i / todayListings.length) * 55);
+      setProgress(pct, `Detail ${i+1}/${todayListings.length}: ${listing.title.substring(0,40)}...`);
+      log(`Detail: ${listing.title.substring(0,50)}`);
+
+      try {
+        const html = await fetchHTML(listing.url);
+        const details = parseDetailPage(html);
+        detailed.push({ ...listing, ...details });
+      } catch(e) {
+        log(`  ⚠️ Nepodarilo sa načítať detail: ${e.message}`);
+        detailed.push({ ...listing, year: null, mileage: null, power: null, fuel: null, description: listing.description });
+      }
+
+      await sleep(300);
+    }
+
+    // ── Phase 3: Filter ──
+    const filtered = detailed.filter(l =>
+      l.power >= 110 &&
+      l.mileage !== null && l.mileage <= 100000 &&
+      l.year >= 2021
+    );
+
+    log(`Filter: ${filtered.length} z ${detailed.length} prešlo.`);
+    document.getElementById('stat-pass').textContent = filtered.length;
+
+    if (filtered.length === 0) {
+      setProgress(100, 'Hotovo');
+      document.getElementById('results-section').style.display = 'block';
+      document.getElementById('car-list').innerHTML = `
+        <div class="no-results">
+          <div class="emoji">🔍</div>
+          <div>Žiadny inzerát nepresiel filtrom (110+ kW, ≤100 000 km, 2021+).</div>
+        </div>`;
+      document.getElementById('results-title').textContent = `Dnešný prehľad: celkom ${detailed.length} inzerátov, 0 prešlo filtrom`;
+      resetButton();
+      return;
+    }
+
+    // ── Phase 4: Score ──
+    setProgress(88, 'Hodnotím a zoraďujem...');
+
+    // Find min price/kW ratio for relative scoring
+    const priceKwValues = filtered
+      .filter(l => l.price && l.power)
+      .map(l => l.price / l.power);
+    const minPriceKw = priceKwValues.length > 0 ? Math.min(...priceKwValues) : null;
+
+    const scored = filtered.map(l => {
+      const priceKw = (l.price && l.power) ? l.price / l.power : null;
+      const scores = {
+        fuel:     scoreFuel(l.fuel),
+        power:    scorePower(l.power),
+        mileage:  scoreMileage(l.mileage),
+        priceKw:  scorePriceKw(priceKw, minPriceKw),
+        year:     scoreYear(l.year),
+      };
+      const totalScore = scores.fuel + scores.power + scores.mileage + scores.priceKw + scores.year;
+      return { ...l, scores, totalScore, priceKw };
+    });
+
+    scored.sort((a, b) => b.totalScore - a.totalScore);
+
+    // ── Phase 5: Render ──
+    setProgress(95, 'Vykresľujem výsledky...');
+
+    document.getElementById('results-section').style.display = 'block';
+    document.getElementById('results-title').textContent =
+      `Dnešný prehľad: celkom ${detailed.length} inzerátov s dnešným dátumom, z toho ${filtered.length} prešlo filtrom.`;
+
+    const listEl = document.getElementById('car-list');
+    if (scored.length > 0) {
+      listEl.innerHTML = scored.map((item, i) => renderCard(item, i + 1)).join('');
+    } else {
+      listEl.innerHTML = `<div class="no-results"><div class="emoji">🔍</div><div>Žiadny inzerát nepresiel filtrom.</div></div>`;
+    }
+
+    setProgress(100, '✅ Hotovo!');
+    log(`Dokončené. ${scored.length} výsledkov.`);
+
+  } catch(e) {
+    showError('Neočakávaná chyba: ' + e.message);
+    log('CHYBA: ' + e.message);
+    setProgress(0, 'Chyba');
+  }
+
+  resetButton();
+}
+
+function resetButton() {
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('startBtn').textContent = '🔄 Skenovať znova';
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// Init
+setToday();
+</script>
+</body>
+</html>
