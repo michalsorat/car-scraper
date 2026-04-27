@@ -534,6 +534,17 @@ export function scoreListings(listings) {
 }
 
 // ─────────────────────────────────────────────
+//  EXCLUDED BRANDS  (elektro — Tesla, VW ID)
+// ─────────────────────────────────────────────
+function isExcludedBrand(title) {
+  const t = title.toLowerCase();
+  if (/\btesla\b/.test(t)) return true;
+  if (/\bvolkswagen\s+id[\s.]|\bvw\s+id[\s.]|\bid\.\d|\bid\s*\d/.test(t)) return true;
+  if (/\benyaq\b/.test(t)) return true;
+  return false;
+}
+
+// ─────────────────────────────────────────────
 //  MAIN SCRAPER
 // ─────────────────────────────────────────────
 export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
@@ -610,7 +621,14 @@ export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
     return;
   }
 
-  emit('stats', { total: uniqueListings.length, pass: 0, pages: pageCount });
+  // ── Ignorovať elektro značky (Tesla, VW ID) ──
+  const excludedCount = uniqueListings.filter(l => isExcludedBrand(l.title)).length;
+  const filteredListings = uniqueListings.filter(l => !isExcludedBrand(l.title));
+  if (excludedCount > 0) {
+    emit('log', { msg: `🚫 Preskočených ${excludedCount} elektro inzerátov (Tesla / VW ID / Enyaq).` });
+  }
+
+  emit('stats', { total: filteredListings.length, pass: 0, pages: pageCount });
 
   // ── Phase 2a: Rozdeliť na cached vs. nové ──
   emit('progress', { pct: 30, label: 'Kontrolujem cache...' });
@@ -619,7 +637,7 @@ export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
   const detailed  = [];
   const toFetch   = [];
 
-  for (const listing of uniqueListings) {
+  for (const listing of filteredListings) {
     const bazosId  = extractBazosId(listing.url);
     const existing = bazosId ? getListing(bazosId) : null;
     if (existing) {
@@ -746,7 +764,7 @@ export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
   );
 
   emit('log',   { msg: `Filter: ${filtered.length} z ${detailed.length} prešlo.` });
-  emit('stats', { total: uniqueListings.length, pass: filtered.length, pages: pageCount });
+  emit('stats', { total: filteredListings.length, pass: filtered.length, pages: pageCount });
 
   if (filtered.length === 0) {
     emit('progress', { pct: 100, label: 'Hotovo' });
