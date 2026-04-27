@@ -105,7 +105,15 @@
     }
     .btn-db:hover { border-color: var(--accent); }
 
-    .start-wrap { text-align: center; margin: 32px 0; display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .start-wrap {
+      text-align: center;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
     .pages-input-wrap { display: flex; align-items: center; gap: 8px; }
     .pages-input-wrap label { font-size: 0.85rem; color: var(--muted); }
     .pages-input {
@@ -115,6 +123,58 @@
     }
     .pages-input:focus { border-color: var(--accent); }
     .pages-input::placeholder { color: var(--muted); }
+
+    /* Parse mode toggle */
+    .parse-mode-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 8px 16px;
+    }
+    .mode-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 500;
+      transition: color 0.2s;
+      user-select: none;
+    }
+    .mode-label.active { color: var(--text); }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .toggle-switch input:checked + .toggle-track {
+      background: var(--accent2);
+      border-color: var(--accent2);
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 16px; height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.3s;
+      pointer-events: none;
+    }
+    .toggle-switch input:checked + .toggle-track .toggle-thumb {
+      transform: translateX(18px);
+    }
+
     .btn-start {
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff;
@@ -168,8 +228,6 @@
       width: 0%;
       transition: width 0.3s ease;
     }
-
-    /* Current item highlight */
     .current-item {
       background: var(--card2);
       border: 1px solid var(--border);
@@ -185,7 +243,6 @@
     .current-item .ci-title { font-weight: 500; }
     .current-item .ci-step { color: var(--accent2); font-size: 0.78rem; margin-top: 3px; }
 
-    /* Log */
     .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
     .log-header span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
     .btn-clear-log { background: none; border: none; color: var(--muted); font-size: 0.72rem; cursor: pointer; padding: 0; }
@@ -280,6 +337,8 @@
     .fuel-plugin { border-color: #60a5fa40; color: #60a5fa; }
     .fuel-elektro { border-color: #a78bfa40; color: #a78bfa; }
     .fuel-diesel { border-color: #ef444440; color: #ef4444; }
+    .parsed-ai    { border-color: #7c3aed40; color: #a78bfa; }
+    .parsed-regex { border-color: #4f8ef740; color: #60a5fa; }
     .no-results { text-align: center; padding: 48px; color: var(--muted); }
     .no-results .emoji { font-size: 2.5rem; margin-bottom: 12px; }
     .error-box {
@@ -291,6 +350,77 @@
       font-size: 0.85rem;
       margin-bottom: 16px;
     }
+
+    /* Badges: novinka, zlava */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .badge-new {
+      background: #22c55e20;
+      border: 1px solid #22c55e60;
+      color: #22c55e;
+    }
+    .badge-sale {
+      background: #f59e0b20;
+      border: 1px solid #f59e0b60;
+      color: #f59e0b;
+    }
+
+    /* Hide button */
+    .btn-hide {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      padding: 4px 11px;
+      font-size: 0.73rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      margin-top: 8px;
+      margin-left: 6px;
+    }
+    .btn-hide:hover { border-color: var(--red); color: var(--red); }
+
+    /* Card hide animation */
+    .car-card.hiding {
+      opacity: 0;
+      transform: translateX(40px);
+      transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease 0.25s, margin 0.3s ease 0.25s, padding 0.3s ease 0.25s;
+      overflow: hidden;
+      max-height: 400px;
+    }
+    .car-card.hidden-card {
+      max-height: 0 !important;
+      margin-bottom: 0 !important;
+      border: none !important;
+      padding: 0 !important;
+    }
+
+    /* AI refresh button on each card */
+    .btn-ai-refresh {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent2);
+      padding: 4px 11px;
+      font-size: 0.73rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      margin-top: 8px;
+    }
+    .btn-ai-refresh:hover:not(:disabled) { border-color: var(--accent2); }
+    .btn-ai-refresh:disabled { opacity: 0.5; cursor: default; }
+    .btn-ai-refresh.done { color: var(--green); border-color: #22c55e40; }
+
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -332,6 +462,17 @@
       <label for="maxPages">Stránok:</label>
       <input class="pages-input" type="number" id="maxPages" min="1" max="99" placeholder="auto">
     </div>
+
+    <!-- Prepínač Regex / AI -->
+    <div class="parse-mode-wrap">
+      <span class="mode-label active" id="label-regex">🔍 Regex</span>
+      <label class="toggle-switch" title="Prepnúť medzi Regex a AI parsovaním">
+        <input type="checkbox" id="useAI" onchange="updateModeLabel()">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <span class="mode-label" id="label-ai">🤖 AI</span>
+    </div>
+
     <button class="btn-start" id="startBtn" onclick="startScraping()">▶ Spustiť skenovanie</button>
   </div>
 
@@ -385,8 +526,18 @@
 </div>
 
 <script>
-let currentSSE = null;
+let currentSSE  = null;
+let cardCounter = 0;
+const carItems  = {};  // cardId → item data
 
+// ── Parse mode toggle ──
+function updateModeLabel() {
+  const ai = document.getElementById('useAI').checked;
+  document.getElementById('label-regex').classList.toggle('active', !ai);
+  document.getElementById('label-ai').classList.toggle('active', ai);
+}
+
+// ── Progress helpers ──
 function setProgress(pct, label) {
   document.getElementById('progress-bar').style.width = pct + '%';
   document.getElementById('progress-label').textContent = label;
@@ -402,25 +553,22 @@ function setCurrentItem(title, step) {
 
 function log(msg) {
   const el = document.getElementById('progress-log');
-  const d = document.createElement('div');
-  // Farby podľa obsahu správy
-  if (msg.includes('🆕'))          d.className = 'log-new';
-  else if (msg.includes('🤖'))     d.className = 'log-ai';
-  else if (msg.includes('✅') || msg.includes('→ výkon')) d.className = 'log-ok';
-  else if (msg.includes('⚠️') || msg.includes('Chyba')) d.className = 'log-warn';
-  else if (msg.includes('Cache') || msg.includes('💰')) d.className = 'log-cache';
-  else if (msg.includes('Stránka')) d.className = 'log-page';
+  const d  = document.createElement('div');
+  if (msg.includes('🆕'))                                       d.className = 'log-new';
+  else if (msg.includes('🤖'))                                  d.className = 'log-ai';
+  else if (msg.includes('✅') || msg.includes('→ výkon'))       d.className = 'log-ok';
+  else if (msg.includes('⚠️') || msg.includes('Chyba'))         d.className = 'log-warn';
+  else if (msg.includes('Cache') || msg.includes('💰'))         d.className = 'log-cache';
+  else if (msg.includes('Stránka'))                             d.className = 'log-page';
   d.textContent = msg;
   el.appendChild(d);
   el.scrollTop = el.scrollHeight;
 
-  // Aktualizuj current-item panel
   if (msg.includes('🆕')) {
-    const title = msg.replace('🆕 Nový: ', '').trim();
-    setCurrentItem(title, 'Načítavam detail stránky...');
+    setCurrentItem(msg.replace('🆕 Nový: ', '').trim(), 'Načítavam detail stránky...');
   } else if (msg.includes('🤖')) {
     const ci = document.getElementById('ci-step');
-    if (ci) ci.textContent = '🤖 Claude AI parsuje údaje...';
+    if (ci) ci.textContent = '🤖 AI parsuje údaje...';
   } else if (msg.includes('→ výkon')) {
     const ci = document.getElementById('ci-step');
     if (ci) ci.textContent = '✅ ' + msg.trim();
@@ -437,6 +585,7 @@ function showError(msg) {
   el.style.display = 'block';
 }
 
+// ── Score ring ──
 function scoreRingColor(score) {
   if (score >= 70) return '#22c55e';
   if (score >= 50) return '#f59e0b';
@@ -459,6 +608,7 @@ function renderScoreRing(score) {
     </div>`;
 }
 
+// ── Fuel helpers ──
 function fuelClass(fuel) {
   if (!fuel) return '';
   const f = fuel.toLowerCase();
@@ -487,7 +637,11 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Card renderer ──
 function renderCard(item) {
+  const cardId = 'car-' + (++cardCounter);
+  carItems[cardId] = { ...item };
+
   const warnings = [];
   if (!item.power)   warnings.push('výkon sa nepodarilo zistiť');
   if (item.mileage === null || item.mileage === undefined) warnings.push('nájazd sa nepodarilo zistiť');
@@ -495,8 +649,12 @@ function renderCard(item) {
   if (!item.fuel)    warnings.push('druh paliva sa nepodarilo zistiť');
   const fuelLabel = item.fuel || 'Neuvedené';
 
+  const newBadge  = item.is_new        ? `<span class="badge badge-new">✨ Novinka</span>` : '';
+  const saleBadge = item.price_dropped ? `<span class="badge badge-sale">🏷 Zlava${item.prev_price ? ' z ' + item.prev_price.toLocaleString('sk-SK') + ' €' : ''}</span>` : '';
+
   const card = document.createElement('div');
   card.className = 'car-card';
+  card.id = cardId;
   card.innerHTML = `
     <div class="car-card-header">
       <div class="rank-score">
@@ -507,44 +665,130 @@ function renderCard(item) {
         <div class="car-title">
           <a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a>
         </div>
+        <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">${newBadge}${saleBadge}</div>
       </div>
       <div class="car-price">${item.price ? item.price.toLocaleString('sk-SK') + ' €' : '—'}</div>
     </div>
     <div class="car-card-body">
       <div class="car-specs">
-        <div class="spec-tag ${fuelClass(item.fuel)}">
-          <span class="icon">${fuelEmoji(item.fuel)}</span>
-          <span class="val">${esc(fuelLabel)}</span>
+        <div class="spec-tag spec-fuel ${fuelClass(item.fuel)}">
+          <span class="icon spec-fuel-icon">${fuelEmoji(item.fuel)}</span>
+          <span class="val spec-fuel-val">${esc(fuelLabel)}</span>
         </div>
         <div class="spec-tag">
           <span class="icon">⚡</span>
-          <span class="val">${item.power ? item.power + ' kW' : '—'}</span>
+          <span class="val spec-power">${item.power ? item.power + ' kW' : '—'}</span>
           <span class="lbl">výkon</span>
         </div>
         <div class="spec-tag">
           <span class="icon">📍</span>
-          <span class="val">${item.mileage != null ? item.mileage.toLocaleString('sk-SK') + ' km' : '—'}</span>
+          <span class="val spec-mileage">${item.mileage != null ? item.mileage.toLocaleString('sk-SK') + ' km' : '—'}</span>
           <span class="lbl">nájazd</span>
         </div>
         <div class="spec-tag">
           <span class="icon">📅</span>
-          <span class="val">${item.year || '—'}</span>
+          <span class="val spec-year">${item.year || '—'}</span>
           <span class="lbl">rok</span>
+        </div>
+        <div class="spec-tag ${item.ai_parsed ? 'parsed-ai' : 'parsed-regex'}">
+          <span class="icon">${item.ai_parsed ? '🤖' : '🔍'}</span>
+          <span class="val">${item.ai_parsed ? 'AI' : 'Regex'}</span>
         </div>
       </div>
       <div class="score-breakdown">
         <div class="score-part"><span class="pts">${item.scores.fuel}/20</span> <span class="cat">palivo</span></div>
         <div class="score-part"><span class="pts">${item.scores.power}/25</span> <span class="cat">výkon</span></div>
         <div class="score-part"><span class="pts">${item.scores.mileage}/25</span> <span class="cat">nájazd</span></div>
-        <div class="score-part"><span class="pts">${item.scores.priceKw}/20</span> <span class="cat">cena/kW</span></div>
+        <div class="score-part"><span class="pts">${item.scores.price}</span> <span class="cat">cena</span></div>
         <div class="score-part"><span class="pts">${item.scores.year}/10</span> <span class="cat">rok</span></div>
       </div>
       ${item.description ? `<div class="car-desc">${esc(item.description.substring(0, 200))}${item.description.length > 200 ? '…' : ''}</div>` : ''}
       ${warnings.length ? `<div class="warning">⚠️ Poznámka: ${warnings.join(', ')}</div>` : ''}
+      <button class="btn-ai-refresh" onclick="refreshWithAI('${cardId}')">🤖 Aktualizovať AI</button>
+      <button class="btn-hide" onclick="hideCard('${cardId}')">🙈 Nezaujíma ma</button>
     </div>`;
   return card;
 }
 
+// ── Hide card ──
+async function hideCard(cardId) {
+  const item = carItems[cardId];
+  if (!item) return;
+  const bazosId = item.bazos_id;
+
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.classList.add('hiding');
+    setTimeout(() => card.classList.add('hidden-card'), 280);
+  }
+
+  if (bazosId) {
+    await fetch(`/api/hide/${bazosId}`, { method: 'POST' }).catch(() => {});
+  }
+}
+
+// ── Per-card AI refresh ──
+async function refreshWithAI(cardId) {
+  const item = carItems[cardId];
+  if (!item) return;
+
+  const card = document.getElementById(cardId);
+  const btn  = card ? card.querySelector('.btn-ai-refresh') : null;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ AI parsuje...'; }
+
+  try {
+    const resp = await fetch('/api/ai-refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: item.url, title: item.title }),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || data.error) {
+      if (btn) { btn.textContent = '⚠️ ' + (data.error || 'Chyba'); btn.disabled = false; }
+      return;
+    }
+
+    // Aktualizuj uložené dáta
+    if (data.power   != null) carItems[cardId].power   = data.power;
+    if (data.mileage != null) carItems[cardId].mileage = data.mileage;
+    if (data.year    != null) carItems[cardId].year    = data.year;
+    if (data.fuel    != null) carItems[cardId].fuel    = data.fuel;
+
+    if (!card) { if (btn) btn.textContent = '✅ Hotovo'; return; }
+
+    const cur = carItems[cardId];
+
+    // Fuel tag (class + emoji + text)
+    const fuelTag = card.querySelector('.spec-fuel');
+    if (fuelTag) {
+      fuelTag.className = `spec-tag spec-fuel ${fuelClass(cur.fuel)}`;
+      const icon = fuelTag.querySelector('.spec-fuel-icon');
+      const val  = fuelTag.querySelector('.spec-fuel-val');
+      if (icon) icon.textContent = fuelEmoji(cur.fuel);
+      if (val)  val.textContent  = cur.fuel || 'Neuvedené';
+    }
+
+    // Power
+    const pw = card.querySelector('.spec-power');
+    if (pw) pw.textContent = cur.power ? cur.power + ' kW' : '—';
+
+    // Mileage
+    const mi = card.querySelector('.spec-mileage');
+    if (mi) mi.textContent = cur.mileage != null ? cur.mileage.toLocaleString('sk-SK') + ' km' : '—';
+
+    // Year
+    const yr = card.querySelector('.spec-year');
+    if (yr) yr.textContent = cur.year || '—';
+
+    if (btn) { btn.textContent = '✅ Aktualizované'; btn.classList.add('done'); }
+
+  } catch (e) {
+    if (btn) { btn.textContent = '⚠️ Chyba'; btn.disabled = false; }
+  }
+}
+
+// ── DB view ──
 async function loadFromDB() {
   document.getElementById('results-section').style.display = 'block';
   document.getElementById('results-title').textContent = 'Načítavam z databázy...';
@@ -577,10 +821,12 @@ async function loadDBCount() {
   document.getElementById('db-count').textContent = data.count;
 }
 
+// ── Start scraping ──
 function startScraping() {
   if (currentSSE) { currentSSE.close(); currentSSE = null; }
 
   const maxPages = parseInt(document.getElementById('maxPages').value) || 0;
+  const useAI    = document.getElementById('useAI').checked;
 
   document.getElementById('startBtn').disabled = true;
   document.getElementById('startBtn').textContent = '⏳ Scrapujem...';
@@ -591,9 +837,12 @@ function startScraping() {
   document.getElementById('car-list').innerHTML = '';
   document.getElementById('spinner').classList.remove('done');
   setCurrentItem(null);
+  cardCounter = 0;
 
-  const url = maxPages > 0 ? `/api/scrape?maxPages=${maxPages}` : '/api/scrape';
-  const sse = new EventSource(url);
+  const params = new URLSearchParams();
+  if (maxPages > 0) params.set('maxPages', maxPages);
+  params.set('useAI', useAI ? '1' : '0');
+  const sse = new EventSource('/api/scrape?' + params.toString());
   currentSSE = sse;
 
   sse.addEventListener('progress', e => {

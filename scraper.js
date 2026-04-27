@@ -1,5 +1,5 @@
 import { parse } from 'node-html-parser';
-import { getListing, insertListing, updatePrice } from './db.js';
+import { getListing, insertListing, updateListing, updatePrice, clearAllNew } from './db.js';
 
 const BASE_PARAMS   = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=';
 const BASE_URL      = 'https://auto.bazos.sk/';
@@ -24,7 +24,7 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-function extractBazosId(url) {
+export function extractBazosId(url) {
   const m = url.match(/\/inzerat\/(\d+)\//);
   return m ? m[1] : null;
 }
@@ -32,7 +32,7 @@ function extractBazosId(url) {
 // ─────────────────────────────────────────────
 //  FETCH
 // ─────────────────────────────────────────────
-async function fetchHTML(url) {
+export async function fetchHTML(url) {
   const resp = await fetch(url, {
     signal: AbortSignal.timeout(20000),
     headers: HEADERS,
@@ -43,7 +43,6 @@ async function fetchHTML(url) {
 
 // ─────────────────────────────────────────────
 //  PARSE OVERVIEW PAGE
-//  Regex/selectors len pre štruktúrované polia: title, url, price
 // ─────────────────────────────────────────────
 function parseOverviewPage(html) {
   const doc = parse(html);
@@ -100,7 +99,7 @@ function parseOverviewPage(html) {
 // ─────────────────────────────────────────────
 //  EXTRACT CAR PARAMS  (tabuľka + celý text)
 // ─────────────────────────────────────────────
-function extractCarParams(html) {
+export function extractCarParams(html) {
   const doc = parse(html);
   doc.querySelectorAll('script, style, noscript, iframe, head').forEach(el => el.remove());
 
@@ -111,12 +110,10 @@ function extractCarParams(html) {
     doc.querySelector('body') ||
     doc;
 
-  // Popis pre zobrazenie (krátky)
   const descEl = mainEl.querySelector('.popis') || mainEl.querySelector('#popis') ||
                  mainEl.querySelector('.textpodsekce') || mainEl.querySelector('.reklamni_box');
   const description = (descEl ? descEl.text : '').replace(/\s+/g, ' ').trim().substring(0, 300);
 
-  // Štruktúrované riadky tabuľky parametrov (kľúč: hodnota) — najpresnejší zdroj
   const lines = [];
   for (const row of mainEl.querySelectorAll('tr')) {
     const cells = row.querySelectorAll('td, th');
@@ -126,7 +123,6 @@ function extractCarParams(html) {
       if (key && val) lines.push(`${key}: ${val}`);
     }
   }
-  // Fallback: definition listy
   if (lines.length === 0) {
     for (const dt of mainEl.querySelectorAll('dt')) {
       const dd = dt.nextElementSibling;
@@ -138,8 +134,7 @@ function extractCarParams(html) {
     }
   }
 
-  // Celý text stránky — fallback keď tabuľka chýba alebo je neúplná
-  const bodyText = mainEl.text.replace(/\s+/g, ' ').trim().substring(0, 1500);
+  const bodyText = mainEl.text.replace(/\s+/g, ' ').trim().substring(0, 4000);
 
   return { description, params: lines.join('\n'), bodyText };
 }
@@ -161,70 +156,256 @@ async function withConcurrency(items, limit, fn) {
 }
 
 // ─────────────────────────────────────────────
-//  REGEX EXTRAKCIA  (názov + tabuľka parametrov)
+//  BULLETPROOF REGEX EXTRAKCIA
+//  Pre každý parameter zbierame VŠETKÝCH kandidátov,
+//  skórujeme podľa kontextu a vyberáme najspoľahlivejší.
 // ─────────────────────────────────────────────
-function regexExtract(title, params, bodyText = '') {
-  // src = názov + tabuľka + celý text (pre výkon, rok, palivo)
-  // nájazd hľadáme ZÁMERNÉ iba v tabuľke a názve — bodyText obsahuje šum
-  const src = `${title}\n${params}\n${bodyText}`;
+export function regexExtract(title, params, bodyText = '') {
+  const src      = `${title}\n${params}\n${bodyText}`;
+  const titleEnd = title.length;
+  const paramsEnd = titleEnd + 1 + params.length;
 
-  // ── Výkon ──
+  // ── VÝKON (power) ──
   let power = null;
-  // "150kW", "150 kW", "150KW" — min 2 číslice aby sme nechytili napr. "5kW"
-  let m = src.match(/\b(\d{2,3}(?:[.,]\d)?)\s*[kK][wW]\b/);
-  if (m) power = Math.round(parseFloat(m[1].replace(',', '.')));
-  // "204PS", "204 PS", "204hp", "204 hp", "204cv"
-  if (!power) {
-    m = src.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:PS|HP|hp|cv|CV)\b/);
-    if (m) power = Math.round(parseFloat(m[1].replace(',', '.')) * 0.7355);
+  {
+    const cands = [];
+
+    // Najvyššia priorita: riadok tabuľky s kľúčom "výkon" / "motor"
+    const tblKw = params.match(
+      /(?:výkon|motor(?:\s*výkon)?|príkon\s*motora)[^\n]{0,40}:\s*(\d{2,3}(?:[.,]\d)?)\s*[kK][wW]/i
+    );
+    if (tblKw) {
+      cands.push({ val: Math.round(parseFloat(tblKw[1].replace(',', '.'))), score: 100 });
+    }
+
+    // "NNN/MMM kW/PS" — vzor kW/PS kombinácia, berieme kW časť
+    for (const m of src.matchAll(/\b(\d{2,3})\/\d{2,4}\s*[kK][wW]\s*\/\s*(?:PS|hp)/g)) {
+      const val = Math.round(parseFloat(m[1]));
+      if (val >= 30 && val <= 750) cands.push({ val, score: 85 });
+    }
+
+    // Všetky "NNN kW" výskyty
+    for (const m of src.matchAll(/\b(\d{2,4}(?:[.,]\d)?)\s*[kK][wW]\b/g)) {
+      const val = Math.round(parseFloat(m[1].replace(',', '.')));
+      if (val < 30 || val > 750) continue;
+
+      const before = src.slice(Math.max(0, m.index - 70), m.index).toLowerCase();
+      const after  = src.slice(m.index + m[0].length, Math.min(src.length, m.index + m[0].length + 30)).toLowerCase();
+
+      let score = 20;
+      if (/výkon|motor\s*výkon/.test(before))               score = 90;
+      else if (/max(?:imálny)?|nom\.|menovit/.test(before)) score = 70;
+      else if (/príkon|spotreb|nabíj|batéri|charg/.test(before)) score = 3;
+      else if (/\/(ps|hp)\b/.test(after))                   score = 80; // "150 kW/204 PS"
+      else if (m.index <= titleEnd)                          score = 55;
+      else if (m.index <= paramsEnd)                         score = 40;
+
+      cands.push({ val, score });
+    }
+
+    // PS / HP → prepočet na kW
+    for (const m of src.matchAll(/\b(\d{2,4}(?:[.,]\d)?)\s*(?:PS|HP|hp|cv|CV)\b/g)) {
+      const val = Math.round(parseFloat(m[1].replace(',', '.')) * 0.7355);
+      if (val < 30 || val > 750) continue;
+      const before = src.slice(Math.max(0, m.index - 70), m.index).toLowerCase();
+      let score = 15;
+      if (/výkon|motor/.test(before)) score = 65;
+      cands.push({ val, score });
+    }
+
+    if (cands.length > 0) {
+      cands.sort((a, b) => b.score - a.score);
+      power = cands[0].val;
+    }
   }
 
-  // ── Nájazd ──
-  // POZOR: chceme len skutočný nájazd (km), nie "5000km servis", "každých 10000km" atď.
-  // Preto hľadáme len v riadkoch tabuľky kde kľúč obsahuje "najazdené/nájazd/km/tachometer"
+  // ── NÁJAZD (mileage) ──
   let mileage = null;
-  const mileageLineMatch = params.match(
-    /(?:najazdené|nájazd|km|tachometer|počet\s*km)[^\n]*?:\s*([0-9][0-9 .]{2,})\s*km/i
-  );
-  if (mileageLineMatch) {
-    mileage = parseInt(mileageLineMatch[1].replace(/[ .]/g, ''));
-  }
-  // Fallback na názov: "85000km", "85 000 km", "85.000km" — min 5 číslic
-  if (!mileage) {
-    m = title.match(/\b(\d{1,3})[. ]?(\d{3})\s*km\b/i);
-    if (m) mileage = parseInt(m[1] + m[2]);
-  }
-  // "85tkm", "85tis" v názve
-  if (!mileage) {
-    m = title.match(/\b(\d{2,3})\s*t(?:is\.?|km)\b/i);
-    if (m) mileage = parseInt(m[1]) * 1000;
+  {
+    const cands = [];
+
+    // Najvyššia priorita: riadok tabuľky s "najazdené / tachometer / počet km"
+    const tblKm = params.match(
+      /(?:najazdené|nájazd(?:ené)?|počet\s*km|tachometer|stav\s*tacho(?:metra)?|km\s*stav)[^\n]{0,25}:\s*([0-9][0-9 .,]{1,9})\s*km/i
+    );
+    if (tblKm) {
+      const val = parseInt(tblKm[1].replace(/[ .,]/g, ''));
+      if (val >= 500 && val <= 500000) cands.push({ val, score: 100 });
+    }
+
+    // "NNN NNN km" / "NNN.NNN km" / "NNN,NNN km" (európsky formát tisícov)
+    for (const m of src.matchAll(/\b(\d{1,3})[. ,](\d{3})\s*km\b/gi)) {
+      const val = parseInt(m[1] + m[2]);
+      if (val < 500 || val > 500000) continue;
+      const before = src.slice(Math.max(0, m.index - 80), m.index).toLowerCase();
+
+      let score = 30;
+      if (/najazdené|nájazd|tachometer|stav\s*tacho/.test(before)) score = 90;
+      else if (/servis.*každ|každých.*km|interval.*km|km.*interval|olej.*výmen|výmen.*olej/.test(before)) score = 2;
+      else if (/každých\s*$/.test(before)) score = 2;   // "každých 15 000 km" — pred číslom
+      else if (/odporúčaných\s*$|výrobcom\s+odp/.test(before)) score = 2; // "odporúčaných 30 000 km"
+      else if (/záruka|garancia/.test(before)) score = 3;
+      else if (m.index <= titleEnd)  score = 55;
+      else if (m.index <= paramsEnd) score = 40;
+
+      cands.push({ val, score });
+    }
+
+    // Kompaktné "85000km" (bez medzery)
+    for (const m of src.matchAll(/\b(\d{5,6})\s*km\b/gi)) {
+      const val = parseInt(m[1]);
+      if (val < 500 || val > 500000) continue;
+      // Vylúčime ak je súčasťou väčšieho čísla (napr. URL)
+      const charBefore = m.index > 0 ? src[m.index - 1] : ' ';
+      if (/\d/.test(charBefore)) continue;
+
+      const before = src.slice(Math.max(0, m.index - 80), m.index).toLowerCase();
+      let score = 25;
+      if (/najazdené|nájazd|tachometer/.test(before)) score = 85;
+      else if (/servis|interval|každých/.test(before)) score = 2;
+      else if (m.index <= titleEnd)  score = 50;
+      else if (m.index <= paramsEnd) score = 35;
+
+      cands.push({ val, score });
+    }
+
+    // "85tkm" / "85tis.km" / "85tis km" v názve
+    for (const m of title.matchAll(/\b(\d{2,3})\s*t(?:is\.?\s*km|km)\b/gi)) {
+      const val = parseInt(m[1]) * 1000;
+      if (val >= 500 && val <= 500000) cands.push({ val, score: 55 });
+    }
+
+    if (cands.length > 0) {
+      cands.sort((a, b) => b.score - a.score);
+      mileage = cands[0].val;
+    }
   }
 
-  // ── Rok výroby ──
+  // ── ROK VÝROBY (year) ──
   let year = null;
-  // Najprv hľadáme v tabuľke: riadok s "rok" alebo "r.v." alebo "výroba"
-  const yearLineMatch = params.match(
-    /(?:rok[^\n]*?výrob|rok[^\n]*?registr|r\.?\s*v\.?)[^\n]*?:\s*(20[1-2]\d)\b/i
-  );
-  if (yearLineMatch) {
-    year = parseInt(yearLineMatch[1]);
-  }
-  // Fallback: akékoľvek 4-ciferné číslo 2015–2029 v celom texte
-  if (!year) {
-    m = src.match(/\b(20(?:1[5-9]|2[0-9]))\b/);
-    if (m) year = parseInt(m[1]);
+  {
+    const cands = [];
+
+    // Najvyššia priorita: riadok tabuľky "rok výroby / rok registrácie / r.v." — plný formát (2021, 2024...)
+    const tblYear = params.match(
+      /(?:rok[^\n]{0,25}(?:výrob|registr|uveden)|r\.?\s*v\.|ročník)[^\n]{0,15}:\s*(20(?:1[5-9]|2[0-9]))\b/i
+    );
+    if (tblYear) cands.push({ val: parseInt(tblYear[1]), score: 100 });
+
+    // Skrátený formát MM/YY (napr. r.v.: 03/24 → 2024) — v tabuľkových parametroch
+    const tblYearShort = params.match(
+      /(?:rok[^\n]{0,25}(?:výrob|registr|uveden)|r\.?\s*v\.|ročník)[^\n]{0,20}:\s*\d{1,2}\/(\d{2})\b/i
+    );
+    if (tblYearShort) {
+      const yy = parseInt(tblYearShort[1]);
+      if (yy >= 15 && yy <= 35) cands.push({ val: 2000 + yy, score: 98 });
+    }
+
+    // Skrátený formát MM/YY kdekoľvek v texte s kontextom roku výroby
+    for (const m of src.matchAll(/\b\d{1,2}\/(\d{2})\b/g)) {
+      const yy = parseInt(m[1]);
+      if (yy < 15 || yy > 35) continue;
+      const before = src.slice(Math.max(0, m.index - 80), m.index).toLowerCase();
+      if (/rok.*výrob|rok.*registr|r\.?\s*v\.|ročník|vyroben/.test(before)) {
+        cands.push({ val: 2000 + yy, score: 80 });
+      }
+    }
+
+    // Všetky výskyty rokov 2015–2029
+    const yearFreq = {};
+    for (const m of src.matchAll(/\b(20(?:1[5-9]|2[0-9]))\b/g)) {
+      const val = parseInt(m[1]);
+      yearFreq[val] = (yearFreq[val] || 0) + 1;
+
+      const before = src.slice(Math.max(0, m.index - 60), m.index).toLowerCase();
+      let score = 10;
+      if (/rok.*výrob|rok.*registr|vyrobený|ročník|r\.v\./.test(before)) score = 85;
+      else if (/model\s+rok|od\s+roku|facelift|verzia/.test(before))     score = 50;
+      else if (m.index <= titleEnd)  score = 45;
+      else if (m.index <= paramsEnd) score = 28;
+
+      cands.push({ val, score });
+    }
+
+    // Bonus za viacnásobný výskyt rovnakého roka (konzistentnosť údajov)
+    for (const c of cands) {
+      if (yearFreq[c.val] >= 3)      c.score += 20;
+      else if (yearFreq[c.val] >= 2) c.score += 10;
+    }
+
+    if (cands.length > 0) {
+      cands.sort((a, b) => b.score - a.score);
+      year = cands[0].val;
+    }
   }
 
-  // ── Palivo ──
+  // ── PALIVO (fuel) ──
+  // Skórujeme každý typ podľa počtu a sily signálov.
   let fuel = null;
-  const tl = src.toLowerCase();
-  // Poradie je dôležité — špecifickejšie pred všeobecnejším
-  if (/plug.?in|phev/.test(tl))                                          fuel = 'Plug-in hybrid';
-  else if (/mild.?hybrid/.test(tl))                                      fuel = 'Hybrid';
-  else if (/hybrid/.test(tl))                                            fuel = 'Hybrid';
-  else if (/elektr|e-tron|e-golf|ioniq|bev|\bid\.?\d|\bev\b/.test(tl))  fuel = 'Elektro';
-  else if (/diesel|nafta|\btdi\b|\bcdi\b|\bhdi\b|\bdci\b|\bcrdi\b|\bjtd\b|\bd4\b|\bd5\b/.test(tl)) fuel = 'Diesel';
-  else if (/benz[ií]n|benzin|\btsi\b|\btfsi\b|\bgdi\b|\bt-gdi\b|\bmpi\b|\bgti\b|\bgsi\b/.test(tl)) fuel = 'Benzín';
+  {
+    const tl = src.toLowerCase();
+    const s  = { 'Plug-in hybrid': 0, 'Hybrid': 0, 'Elektro': 0, 'Diesel': 0, 'Benzín': 0 };
+
+    // Plug-in hybrid
+    if (/plug[- ]?in/.test(tl))              s['Plug-in hybrid'] += 55;
+    if (/\bphev\b/.test(tl))                 s['Plug-in hybrid'] += 50;
+    if (/rech?argeable.*hybrid/.test(tl))    s['Plug-in hybrid'] += 45;
+
+    // Mild-hybrid / Hybrid
+    if (/mild[- ]?hybrid/.test(tl))          s['Hybrid'] += 50;
+    if (/\bmhev\b/.test(tl))                 s['Hybrid'] += 45;
+    if (/\bhybrid\b/.test(tl))               s['Hybrid'] += 30;
+
+    // Elektro (BEV)
+    if (/elektrick[aáeéy]|full[- ]?electric/.test(tl)) s['Elektro'] += 60;
+    if (/\bbev\b/.test(tl))                  s['Elektro'] += 50;
+    if (/\be-tron\b/.test(tl))               s['Elektro'] += 50;
+    if (/\bid\.\s*\d|\bid\s+\d/.test(tl))   s['Elektro'] += 50;
+    if (/\bioniq\s*\d/.test(tl))             s['Elektro'] += 45;
+    if (/e-golf/.test(tl))                   s['Elektro'] += 45;
+    if (/\bev\b/.test(tl))                   s['Elektro'] += 22;
+    if (/\bzoe\b/.test(tl))                  s['Elektro'] += 40;
+    if (/\bmodel\s*[sy3x]\b/.test(tl))       s['Elektro'] += 35; // Tesla
+    if (/\bkwh\b/.test(tl))                  s['Elektro'] += 35;
+
+    // Diesel
+    if (/\bdiesel\b/.test(tl))               s['Diesel'] += 60;
+    if (/\bnafta\b/.test(tl))                s['Diesel'] += 55;
+    if (/\btdi\b/.test(tl))                  s['Diesel'] += 48;
+    if (/\bcdi\b/.test(tl))                  s['Diesel'] += 48;
+    if (/\bhdi\b/.test(tl))                  s['Diesel'] += 48;
+    if (/\bdci\b/.test(tl))                  s['Diesel'] += 48;
+    if (/\bcrdi\b/.test(tl))                 s['Diesel'] += 48;
+    if (/\bjtd[m]?\b/.test(tl))              s['Diesel'] += 48;
+    if (/\bsdi\b/.test(tl))                  s['Diesel'] += 35;
+    if (/\bd4[adet]?\b/.test(tl))            s['Diesel'] += 30;
+    if (/\bd5\b/.test(tl))                   s['Diesel'] += 30;
+    if (/\b\w+\d{2,3}d\b/.test(tl))          s['Diesel'] += 15; // napr. 320d, xDrive20d
+
+    // Benzín
+    if (/benzín|benzin/.test(tl))            s['Benzín'] += 60;
+    if (/\bpetrol\b/.test(tl))               s['Benzín'] += 55;
+    if (/\btsi\b/.test(tl))                  s['Benzín'] += 48;
+    if (/\btfsi\b/.test(tl))                 s['Benzín'] += 48;
+    if (/\bfsi\b/.test(tl))                  s['Benzín'] += 38;
+    if (/\bgdi\b/.test(tl))                  s['Benzín'] += 42;
+    if (/\bt-gdi\b/.test(tl))               s['Benzín'] += 42;
+    if (/\b[s]?mpi\b/.test(tl))             s['Benzín'] += 38;
+    if (/\bgti\b/.test(tl))                  s['Benzín'] += 32;
+    if (/\bgsi\b/.test(tl))                  s['Benzín'] += 32;
+    if (/\bsti\b/.test(tl))                  s['Benzín'] += 28;
+    if (/\bvtec\b|\bi-vtec\b/.test(tl))     s['Benzín'] += 40;
+    if (/\bturbo\b/.test(tl))               s['Benzín'] += 8; // slabý signál
+
+    // Konflikt Elektro vs Hybrid: ak silné BEV signály, oslabíme hybrid
+    if (s['Elektro'] >= 70) {
+      s['Hybrid']          = Math.max(0, s['Hybrid']          - 25);
+      s['Plug-in hybrid']  = Math.max(0, s['Plug-in hybrid']  - 25);
+    }
+
+    const best = Object.entries(s).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (best.length > 0) fuel = best[0][0];
+  }
 
   return { power, mileage, year, fuel };
 }
@@ -232,7 +413,7 @@ function regexExtract(title, params, bodyText = '') {
 // ─────────────────────────────────────────────
 //  OLLAMA  —  AI extrakcia všetkých polí
 // ─────────────────────────────────────────────
-async function extractCarData(title, params, bodyText, emitLog) {
+export async function extractCarData(title, params, bodyText, emitLog) {
   const sections = [];
   if (params) sections.push(`Parametre (tabuľka):\n${params}`);
   if (bodyText) sections.push(`Text inzerátu:\n${bodyText}`);
@@ -289,19 +470,20 @@ ${sections.join('\n\n')}`;
 function scoreFuel(fuel) {
   if (!fuel) return 0;
   const f = fuel.toLowerCase();
-  if (/plug[- ]?in|phev/.test(f))      return 12;
-  if (/mild[- ]?hybrid/.test(f))       return 15;
-  if (/hybrid/.test(f))                return 15;
+  if (/plug[- ]?in|phev/.test(f))      return 0;
+  if (/elektr|bev/.test(f))            return 0;
+  if (/mild[- ]?hybrid/.test(f))       return 14;
+  if (/hybrid/.test(f))                return 14;
+  if (/diesel|nafta/.test(f))          return 3;
   if (/benz[ií]n/.test(f))             return 20;
-  if (/elektr|bev/.test(f))            return 6;
-  if (/diesel|nafta/.test(f))          return 4;
   return 0;
 }
 function scorePower(kw) {
   if (!kw) return 0;
-  if (kw >= 151) return 25;
-  if (kw >= 131) return 18;
-  if (kw >= 110) return 10;
+  if (kw >= 200) return 18;
+  if (kw >= 180) return 20;
+  if (kw >= 130) return 25;
+  if (kw >= 110) return 8;
   return 0;
 }
 function scoreMileage(km) {
@@ -320,9 +502,12 @@ function scoreYear(y) {
   if (y === 2021) return 3;
   return 0;
 }
-function scorePriceKw(pricePerKw, minPricePerKw) {
-  if (!pricePerKw || !minPricePerKw || minPricePerKw <= 0) return 0;
-  return Math.round((minPricePerKw / pricePerKw) * 20);
+function scorePrice(price) {
+  if (!price) return 0;
+  if (price <= 30000) return 0;
+  if (price <= 32000) return -5;
+  if (price <= 34000) return -10;
+  return -15;
 }
 
 // ─────────────────────────────────────────────
@@ -334,18 +519,15 @@ export function scoreListings(listings) {
     l.mileage !== null && l.mileage <= 100000 &&
     l.year >= 2021
   );
-  const priceKwValues = filtered.filter(l => l.price && l.power).map(l => l.price / l.power);
-  const minPriceKw    = priceKwValues.length > 0 ? Math.min(...priceKwValues) : null;
   const scored = filtered.map(l => {
-    const priceKwRatio = (l.price && l.power) ? l.price / l.power : null;
     const scores = {
       fuel:    scoreFuel(l.fuel),
       power:   scorePower(l.power),
       mileage: scoreMileage(l.mileage),
-      priceKw: scorePriceKw(priceKwRatio, minPriceKw),
+      price:   scorePrice(l.price),
       year:    scoreYear(l.year),
     };
-    return { ...l, scores, totalScore: scores.fuel + scores.power + scores.mileage + scores.priceKw + scores.year, priceKwRatio };
+    return { ...l, scores, totalScore: scores.fuel + scores.power + scores.mileage + scores.price + scores.year };
   });
   scored.sort((a, b) => b.totalScore - a.totalScore);
   return scored.map((item, i) => ({ ...item, rank: i + 1 }));
@@ -354,8 +536,13 @@ export function scoreListings(listings) {
 // ─────────────────────────────────────────────
 //  MAIN SCRAPER
 // ─────────────────────────────────────────────
-export async function runScraper(emit, isAborted, maxPages = 0) {
-  emit('log', { msg: `✅ Ollama (model: ${OLLAMA_MODEL})` });
+export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
+  clearAllNew();
+
+  emit('log', { msg: useAI
+    ? `✅ Režim: AI (model: ${OLLAMA_MODEL})`
+    : '✅ Režim: Regex (bez AI)'
+  });
 
   emit('progress', { pct: 5, label: 'Načítavam prehľadové stránky...' });
   emit('log', { msg: maxPages > 0 ? `Skenujeme ${maxPages} stránok.` : 'Skenujeme všetky stránky.' });
@@ -389,7 +576,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
 
     collectedListings.push(...listings);
 
-    if (listings.length < 20) {
+    if (listings.length === 0) {
       emit('log', { msg: 'Posledná stránka dosiahnutá.' });
       stop = true;
     }
@@ -430,29 +617,48 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
   let newCount    = 0;
   let cachedCount = 0;
   const detailed  = [];
-  const toFetch   = [];   // nové inzeráty čakajúce na fetch + Ollama
+  const toFetch   = [];
 
   for (const listing of uniqueListings) {
     const bazosId  = extractBazosId(listing.url);
     const existing = bazosId ? getListing(bazosId) : null;
     if (existing) {
+      let priceDropped = false;
+      const prevPrice  = existing.price;
       if (existing.price !== listing.price && listing.price != null) {
+        priceDropped = listing.price < existing.price;
         updatePrice(bazosId, listing.price);
-        emit('log', { msg: `💰 Zmena ceny: ${existing.title?.substring(0, 40)} → ${listing.price} €` });
+        const msg = priceDropped
+          ? `💰 Zlava! ${existing.title?.substring(0, 35)} ${existing.price} → ${listing.price} €`
+          : `💰 Zmena ceny: ${existing.title?.substring(0, 40)} → ${listing.price} €`;
+        emit('log', { msg });
       }
-      cachedCount++;
-      detailed.push({
-        title:       existing.title || listing.title,
-        url:         existing.url,
-        price:       listing.price ?? existing.price,
-        description: existing.description,
-        year:        existing.year,
-        mileage:     existing.mileage,
-        power:       existing.power,
-        fuel:        existing.fuel,
-      });
+      if (existing.ai_parsed === 1) {
+        // AI parsované — dáta sú presné, použijeme cache
+        cachedCount++;
+        detailed.push({
+          title:         existing.title || listing.title,
+          url:           existing.url,
+          price:         listing.price ?? existing.price,
+          description:   existing.description,
+          year:          existing.year,
+          mileage:       existing.mileage,
+          power:         existing.power,
+          fuel:          existing.fuel,
+          ai_parsed:     1,
+          bazos_id:      bazosId,
+          is_new:        existing.is_new  || false,
+          hidden:        priceDropped ? false : (existing.hidden || false),
+          price_dropped: priceDropped,
+          prev_price:    priceDropped ? prevPrice : undefined,
+        });
+      } else {
+        // Regex parsované — re-fetchujeme a aktualizujeme
+        emit('log', { msg: `🔄 Re-parse (regex): ${listing.title.substring(0, 40)}` });
+        toFetch.push({ listing, bazosId, isReParse: true, existingHidden: existing.hidden || false, priceDropped, prevPrice });
+      }
     } else {
-      toFetch.push({ listing, bazosId });
+      toFetch.push({ listing, bazosId, isReParse: false, existingHidden: false, priceDropped: false, prevPrice: null });
     }
   }
   emit('log', { msg: `Cache: ${cachedCount}, nové na spracovanie: ${toFetch.length}` });
@@ -461,48 +667,71 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
   if (toFetch.length > 0) {
     emit('progress', { pct: 35, label: `Sťahujem ${toFetch.length} detailových stránok...` });
 
-    const fetched = await withConcurrency(toFetch, 5, async ({ listing, bazosId }, i) => {
+    const fetched = await withConcurrency(toFetch, 5, async ({ listing, bazosId, isReParse, existingHidden, priceDropped, prevPrice }, i) => {
       if (isAborted()) return null;
       emit('progress', {
         pct: 35 + Math.round((i / toFetch.length) * 20),
         label: `Fetch ${i + 1}/${toFetch.length}: ${listing.title.substring(0, 40)}...`,
       });
       try {
-        const html                                    = await fetchHTML(listing.url);
-        const { description, params, bodyText }     = extractCarParams(html);
-        return { listing, bazosId, description, params, bodyText };
+        const html                               = await fetchHTML(listing.url);
+        const { description, params, bodyText } = extractCarParams(html);
+        return { listing, bazosId, isReParse, existingHidden, priceDropped, prevPrice, description, params, bodyText };
       } catch (e) {
         emit('log', { msg: `   ⚠️ Fetch chyba: ${listing.title.substring(0, 40)} — ${e.message}` });
         return null;
       }
     });
 
-    // ── Phase 2c: Ollama sekvenčne (GPU zvládne iba 1) ──
-    emit('progress', { pct: 55, label: 'AI parsovanie...' });
+    // ── Phase 2c: Parsovanie (AI alebo Regex) ──
+    emit('progress', { pct: 55, label: useAI ? 'AI parsovanie...' : 'Regex parsovanie...' });
     const valid = fetched.filter(Boolean);
 
     for (let i = 0; i < valid.length; i++) {
       if (isAborted()) break;
-      const { listing, bazosId, description, params, bodyText } = valid[i];
+      const { listing, bazosId, isReParse, existingHidden, priceDropped, prevPrice, description, params, bodyText } = valid[i];
+
       emit('progress', {
         pct: 55 + Math.round((i / valid.length) * 30),
-        label: `AI ${i + 1}/${valid.length}: ${listing.title.substring(0, 40)}...`,
+        label: `${useAI ? 'AI' : 'Regex'} ${i + 1}/${valid.length}: ${listing.title.substring(0, 40)}...`,
       });
-      emit('log', { msg: `🆕 Nový: ${listing.title.substring(0, 50)}` });
+      emit('log', { msg: `🆕 ${isReParse ? 'Re-parse' : 'Nový'}: ${listing.title.substring(0, 50)}` });
 
-      try {
-        const aiData = await extractCarData(listing.title, params, bodyText, msg => emit('log', { msg }));
-        emit('log', { msg: `   → výkon: ${aiData.power ?? '?'} kW | nájazd: ${aiData.mileage ?? '?'} km | rok: ${aiData.year ?? '?'} | palivo: ${aiData.fuel ?? '?'}` });
+      let parsedData = { power: null, mileage: null, year: null, fuel: null };
 
-        const fullListing = { title: listing.title, url: listing.url, price: listing.price, description, ...aiData };
-        if (bazosId) insertListing({ bazos_id: bazosId, ...fullListing, ai_parsed: 1 });
-
-        detailed.push(fullListing);
-        newCount++;
-      } catch (e) {
-        emit('log', { msg: `   ⚠️ AI chyba: ${e.message}` });
-        detailed.push({ ...listing, year: null, mileage: null, power: null, fuel: null, description });
+      if (useAI) {
+        try {
+          parsedData = await extractCarData(listing.title, params, bodyText, msg => emit('log', { msg }));
+        } catch (e) {
+          emit('log', { msg: `   ⚠️ AI chyba: ${e.message}` });
+        }
+      } else {
+        parsedData = regexExtract(listing.title, params, bodyText);
       }
+
+      const aiParsedFlag = useAI ? 1 : 0;
+      emit('log', {
+        msg: `   → výkon: ${parsedData.power ?? '?'} kW | nájazd: ${parsedData.mileage ?? '?'} km | rok: ${parsedData.year ?? '?'} | palivo: ${parsedData.fuel ?? '?'} | zdroj: ${useAI ? 'AI' : 'Regex'}`,
+      });
+
+      const fullListing = { title: listing.title, url: listing.url, price: listing.price, description, ...parsedData, ai_parsed: aiParsedFlag };
+      if (bazosId) {
+        if (isReParse) {
+          updateListing(bazosId, { ...parsedData, description, title: listing.title, price: listing.price ?? undefined, ai_parsed: aiParsedFlag });
+        } else {
+          insertListing({ bazos_id: bazosId, ...fullListing });
+        }
+      }
+
+      detailed.push({
+        ...fullListing,
+        bazos_id:      bazosId,
+        is_new:        !isReParse,
+        hidden:        priceDropped ? false : existingHidden,
+        price_dropped: priceDropped,
+        prev_price:    priceDropped ? prevPrice : undefined,
+      });
+      newCount++;
     }
   }
 
@@ -510,6 +739,7 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
 
   // ── Phase 3: Filter ──
   const filtered = detailed.filter(l =>
+    (!l.hidden || l.price_dropped) &&
     l.power >= 110 &&
     l.mileage !== null && l.mileage <= 100000 &&
     l.year >= 2021
@@ -527,20 +757,16 @@ export async function runScraper(emit, isAborted, maxPages = 0) {
   // ── Phase 4: Score ──
   emit('progress', { pct: 88, label: 'Hodnotím a zoraďujem...' });
 
-  const priceKwValues = filtered.filter(l => l.price && l.power).map(l => l.price / l.power);
-  const minPriceKw   = priceKwValues.length > 0 ? Math.min(...priceKwValues) : null;
-
   const scored = filtered.map(l => {
-    const priceKwRatio = (l.price && l.power) ? l.price / l.power : null;
     const scores = {
       fuel:    scoreFuel(l.fuel),
       power:   scorePower(l.power),
       mileage: scoreMileage(l.mileage),
-      priceKw: scorePriceKw(priceKwRatio, minPriceKw),
+      price:   scorePrice(l.price),
       year:    scoreYear(l.year),
     };
-    const totalScore = scores.fuel + scores.power + scores.mileage + scores.priceKw + scores.year;
-    return { ...l, scores, totalScore, priceKwRatio };
+    const totalScore = scores.fuel + scores.power + scores.mileage + scores.price + scores.year;
+    return { ...l, scores, totalScore };
   });
 
   scored.sort((a, b) => b.totalScore - a.totalScore);
