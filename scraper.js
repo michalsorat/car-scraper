@@ -1,7 +1,7 @@
 import { parse } from 'node-html-parser';
 import { getListing, insertListing, updateListing, updatePrice, clearAllNew } from './db.js';
 
-const BASE_PARAMS   = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=35000&Submit=H%C4%BEada%C5%A5&order=';
+const BASE_PARAMS   = 'hledat=&rubriky=auto&hlokalita=&humkreis=25&cenaod=23000&cenado=33000&Submit=H%C4%BEada%C5%A5&order=';
 const BASE_URL      = 'https://auto.bazos.sk/';
 const OLLAMA_MODEL  = 'gemma4:e2b';
 const OLLAMA_URL    = 'http://localhost:11434/api/generate';
@@ -514,11 +514,16 @@ function scorePrice(price) {
 //  SCORING EXPORT  (pre DB view)
 // ─────────────────────────────────────────────
 export function scoreListings(listings) {
-  const filtered = listings.filter(l =>
-    l.power >= 110 &&
-    l.mileage !== null && l.mileage <= 100000 &&
-    l.year >= 2021
-  );
+  const filtered = listings.filter(l => {
+    const f = (l.fuel || '').toLowerCase();
+    const isExcludedFuel = /elektr|bev/.test(f) || /diesel|nafta|tdi|cdi|hdi|dci|crdi|jtd/.test(f);
+    return (
+      !isExcludedFuel &&
+      l.power >= 110 &&
+      l.mileage !== null && l.mileage <= 100000 &&
+      l.year >= 2021
+    );
+  });
   const scored = filtered.map(l => {
     const scores = {
       fuel:    scoreFuel(l.fuel),
@@ -756,12 +761,17 @@ export async function runScraper(emit, isAborted, maxPages = 0, useAI = true) {
   emit('log', { msg: `Nové: ${newCount}, z cache: ${cachedCount}` });
 
   // ── Phase 3: Filter ──
-  const filtered = detailed.filter(l =>
-    (!l.hidden || l.price_dropped) &&
-    l.power >= 110 &&
-    l.mileage !== null && l.mileage <= 100000 &&
-    l.year >= 2021
-  );
+  const filtered = detailed.filter(l => {
+    const f = (l.fuel || '').toLowerCase();
+    const isExcludedFuel = /elektr|bev/.test(f) || /diesel|nafta|tdi|cdi|hdi|dci|crdi|jtd/.test(f);
+    return (
+      (!l.hidden || l.price_dropped) &&
+      !isExcludedFuel &&
+      l.power >= 110 &&
+      l.mileage !== null && l.mileage <= 100000 &&
+      l.year >= 2021
+    );
+  });
 
   emit('log',   { msg: `Filter: ${filtered.length} z ${detailed.length} prešlo.` });
   emit('stats', { total: filteredListings.length, pass: filtered.length, pages: pageCount });
